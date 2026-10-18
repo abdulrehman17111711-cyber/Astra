@@ -1,0 +1,6 @@
+{
+  "name": "Astra Voice Assistant",
+  "description": "Voice-first Android assistant built by Abdul Rehman with modern Clean Architecture, tool orchestration, and dynamic states.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

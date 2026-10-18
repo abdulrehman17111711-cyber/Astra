@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Astra Voice Assistant</string>
+    <string name="accessibility_service_name">Astra Voice Assistant Accessibility</string>
+    <string name="accessibility_service_description">Empowers Astra Voice Assistant to assist with hands-free navigation, reading visible screen elements, and interacting with accessible buttons and controls upon your explicit voice commands. Strictly respects privacy: never interacts with passwords, 2FA, or sensitive data.</string>
+</resources>
