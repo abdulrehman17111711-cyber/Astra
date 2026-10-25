@@ -118,10 +118,11 @@ class AstraApplication : Application() {
         toolRegistry.register(com.astra.ai.tools.builtin.DeviceInfoTool(this))
         toolRegistry.register(DeviceStatusTool(this))
         toolRegistry.register(com.astra.ai.tools.builtin.NotificationTool(this))
+        toolRegistry.register(com.astra.ai.tools.builtin.ReadNotificationsTool(this))
         toolRegistry.register(com.astra.ai.tools.builtin.RefreshAppsTool(appManager))
         toolRegistry.register(com.astra.ai.tools.builtin.SearchAppTool(this))
-        toolRegistry.register(WorldClockTool())
         toolRegistry.register(QuickNoteTool(memoryRepository))
+        toolRegistry.register(com.astra.ai.tools.builtin.DeviceUnlockTool(this))
         val automationEngine = com.astra.ai.automation.AndroidAutomationEngine(this, appManager)
         toolRegistry.register(com.astra.ai.tools.builtin.AccessibilityTool(this, appManager, automationEngine))
 
@@ -138,7 +139,8 @@ class AstraApplication : Application() {
         val aiEngine = DefaultAiEngine(
             toolRegistry = toolRegistry,
             appManager = appManager,
-            backendClient = backendClient
+            backendClient = backendClient,
+            settingsRepository = settingsRepository
         )
         val resultVerifier = ResultVerifier()
         val responseGenerator = ResponseGenerator()

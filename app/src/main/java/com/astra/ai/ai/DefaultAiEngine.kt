@@ -21,7 +21,9 @@ import com.astra.ai.tools.ValidationResult
 class DefaultAiEngine(
     private val toolRegistry: ToolRegistry,
     private val appManager: AppManager? = null,
-    private val backendClient: AstraBackendClient? = null
+    private val backendClient: AstraBackendClient? = null,
+    private val geminiAiService: GeminiAiService = GeminiAiService(),
+    private val settingsRepository: com.astra.ai.settings.SettingsRepository? = null
 ) : AiEngine {
 
     private val universalIntentEngine = UniversalSemanticIntentEngine(toolRegistry, appManager)
@@ -99,17 +101,21 @@ class DefaultAiEngine(
             return AiReasoningResult.DirectResponse(structuredIntent.clarificationQuestion)
         }
 
-        // Handle conversational queries without tools
+        // Handle conversational queries without tools (Gemini Q&A integration)
         if (structuredIntent.action == StructuredIntent.ACTION_CONVERSATION || structuredIntent.mappedTool == null) {
+            val lower = trimmed.lowercase()
             val responseText = when {
-                trimmed.lowercase().contains("who made you") || trimmed.lowercase().contains("creator") ||
-                        trimmed.lowercase().contains("developer") || trimmed.lowercase().contains("kisne banaya") ->
+                lower.contains("who made you") || lower.contains("creator") ||
+                        lower.contains("developer") || lower.contains("kisne banaya") ->
                     "I am Astra Voice Assistant, engineered by ${AstraConstants.CREATOR_NAME} as a production-grade, voice-first Android assistant."
 
-                trimmed.lowercase() in listOf("hello", "hi", "hey", "astra", "hey astra", "salam", "assalam o alaikum") ->
+                lower in listOf("hello", "hi", "hey", "astra", "hey astra", "salam", "assalam o alaikum") ->
                     "Hello! Astra Voice Assistant is listening. What would you like me to do?"
 
-                else -> "I heard \"$trimmed\". How can I assist you with your device or apps?"
+                else -> {
+                    val userKey = settingsRepository?.settings?.value?.geminiApiKey
+                    geminiAiService.generateAnswer(trimmed, userKey)
+                }
             }
             return AiReasoningResult.DirectResponse(responseText)
         }

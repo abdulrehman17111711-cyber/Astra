@@ -248,13 +248,27 @@ class AssistantController(
                     }
 
                     is AiReasoningResult.RequiresConfirmation -> {
-                        requestConfirmation(
-                            query = trimmed,
+                        val settings = settingsRepository?.settings?.value
+                        val needsConfirmation = confirmationManager.isConfirmationRequired(
                             toolName = reasoningResult.toolName,
-                            actionTitle = reasoningResult.actionTitle,
-                            description = reasoningResult.description,
-                            parameters = reasoningResult.parameters
+                            params = reasoningResult.parameters,
+                            settings = settings
                         )
+                        if (needsConfirmation) {
+                            requestConfirmation(
+                                query = trimmed,
+                                toolName = reasoningResult.toolName,
+                                actionTitle = reasoningResult.actionTitle,
+                                description = reasoningResult.description,
+                                parameters = reasoningResult.parameters
+                            )
+                        } else {
+                            handleToolCall(
+                                query = trimmed,
+                                toolName = reasoningResult.toolName,
+                                params = reasoningResult.parameters
+                            )
+                        }
                     }
 
                     is AiReasoningResult.Error -> {

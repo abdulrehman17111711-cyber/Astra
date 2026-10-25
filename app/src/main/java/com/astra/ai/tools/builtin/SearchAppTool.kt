@@ -71,26 +71,38 @@ class SearchAppTool(
                 }
 
                 lowerApp.contains("tiktok") -> {
-                    val isAccountQuery = rawQuery.startsWith("@") || rawQuery.contains("account", ignoreCase = true) || rawQuery.contains("user", ignoreCase = true)
-                    val cleanAccount = rawQuery.replace(Regex("(?i)\\b(account|user|profile|is|ki|latest|video|dhoondo|dekho)\\b"), "").trim().removePrefix("@").trim()
-                    
-                    val (primaryUri, webUri) = if (isAccountQuery && cleanAccount.isNotBlank()) {
+                    // Check if query is an explicit single-word username handle or video/account search
+                    val isExplicitHandle = (rawQuery.startsWith("@") || rawQuery.contains("account", ignoreCase = true)) &&
+                            !rawQuery.contains("video", ignoreCase = true) && !rawQuery.contains("latest", ignoreCase = true)
+                    val cleanAccount = rawQuery.replace(Regex("(?i)\\b(account|user|profile|is|ki|latest|video|dhoondo|dekho|search|karo|open|kholo)\\b"), "").trim().removePrefix("@").trim()
+                    val isSingleHandle = isExplicitHandle && !cleanAccount.contains(" ") && cleanAccount.isNotBlank()
+
+                    val (primaryUri, webUri) = if (isSingleHandle) {
+                        val encAcc = Uri.encode(cleanAccount)
                         Pair(
-                            Uri.parse("snssdk1233://user/profile?unique_id=$cleanAccount"),
-                            Uri.parse("https://www.tiktok.com/@$cleanAccount")
+                            Uri.parse("snssdk1233://user/profile?unique_id=$encAcc"),
+                            Uri.parse("https://www.tiktok.com/@$encAcc")
                         )
                     } else {
+                        val encQuery = Uri.encode(rawQuery)
                         Pair(
-                            Uri.parse("snssdk1233://search/result?keyword=$encodedQuery"),
-                            Uri.parse("https://www.tiktok.com/search?q=$encodedQuery")
+                            Uri.parse("snssdk1233://search/result?keyword=$encQuery"),
+                            Uri.parse("https://www.tiktok.com/search?q=$encQuery")
                         )
                     }
 
+                    // Check both com.zhiliaoapp.musically and com.ss.android.ugc.trill
+                    val tiktokPkg = if (context.packageManager.getLaunchIntentForPackage("com.zhiliaoapp.musically") != null) {
+                        "com.zhiliaoapp.musically"
+                    } else if (context.packageManager.getLaunchIntentForPackage("com.ss.android.ugc.trill") != null) {
+                        "com.ss.android.ugc.trill"
+                    } else null
+
                     val appIntent = Intent(Intent.ACTION_VIEW, primaryUri).apply {
-                        setPackage("com.zhiliaoapp.musically")
+                        if (tiktokPkg != null) setPackage(tiktokPkg)
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
-                    if (appIntent.resolveActivity(context.packageManager) != null) {
+                    if (tiktokPkg != null && appIntent.resolveActivity(context.packageManager) != null) {
                         appIntent
                     } else {
                         Intent(Intent.ACTION_VIEW, webUri).apply {
@@ -100,18 +112,22 @@ class SearchAppTool(
                 }
 
                 lowerApp.contains("instagram") || lowerApp.contains("insta") -> {
-                    val isAccountQuery = rawQuery.startsWith("@") || rawQuery.contains("account", ignoreCase = true) || rawQuery.contains("user", ignoreCase = true) || rawQuery.contains("profile", ignoreCase = true)
-                    val cleanAccount = rawQuery.replace(Regex("(?i)\\b(account|user|profile|is|ki|latest|post|page|dhoondo|dekho)\\b"), "").trim().removePrefix("@").trim()
+                    val isExplicitHandle = (rawQuery.startsWith("@") || rawQuery.contains("account", ignoreCase = true) || rawQuery.contains("profile", ignoreCase = true)) &&
+                            !rawQuery.contains("video", ignoreCase = true) && !rawQuery.contains("post", ignoreCase = true)
+                    val cleanAccount = rawQuery.replace(Regex("(?i)\\b(account|user|profile|is|ki|latest|post|page|video|dhoondo|dekho|search|karo|open)\\b"), "").trim().removePrefix("@").trim()
+                    val isSingleHandle = isExplicitHandle && !cleanAccount.contains(" ") && cleanAccount.isNotBlank()
 
-                    val (primaryUri, webUri) = if (isAccountQuery && cleanAccount.isNotBlank()) {
+                    val (primaryUri, webUri) = if (isSingleHandle) {
+                        val encAcc = Uri.encode(cleanAccount)
                         Pair(
-                            Uri.parse("instagram://user?username=$cleanAccount"),
-                            Uri.parse("https://www.instagram.com/$cleanAccount/")
+                            Uri.parse("instagram://user?username=$encAcc"),
+                            Uri.parse("https://www.instagram.com/$encAcc/")
                         )
                     } else {
+                        val encQuery = Uri.encode(rawQuery)
                         Pair(
-                            Uri.parse("https://www.instagram.com/explore/tags/${encodedQuery.replace(" ", "")}/"),
-                            Uri.parse("https://www.instagram.com/explore/tags/${encodedQuery.replace(" ", "")}/")
+                            Uri.parse("https://www.instagram.com/explore/tags/${encQuery.replace("+", "").replace(" ", "")}/"),
+                            Uri.parse("https://www.instagram.com/explore/tags/${encQuery.replace("+", "").replace(" ", "")}/")
                         )
                     }
 

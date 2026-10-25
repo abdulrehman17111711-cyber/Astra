@@ -65,10 +65,10 @@ class CallTool(
 
         val requestedSim = (params["simPreference"] ?: params["sim"])?.toString()?.trim()?.ifEmpty { "Default SIM" } ?: "Default SIM"
 
-        // 1. Resolve phone number: if target already looks like numbers, use directly; otherwise lookup via ContactsContract
+        // 1. Resolve phone number: if target already looks like numbers, use directly; otherwise lookup via ContactMatcher
         val resolvedNumber = resolvePhoneNumber(target)
         if (resolvedNumber.isBlank()) {
-            return ToolExecutionResult.failure("Could not find a phone number for \"$target\". Please verify contact permissions or specify a direct number.")
+            return ToolExecutionResult.failure("Could not find a phone number for \"$target\". Please verify contact permissions or check the contact name.")
         }
 
         // 2. Check CALL_PHONE permission
@@ -86,22 +86,29 @@ class CallTool(
                 data = Uri.parse("tel:$resolvedNumber")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
 
-                // Attach SIM preference to Intent extras using official Telecom extra keys
+                // Attach SIM preference to Intent extras using official Telecom extra keys & OEM compatibility keys
                 simInfo.accountHandle?.let { handle ->
                     putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle)
+                    putExtra("android.telecom.extra.PHONE_ACCOUNT_HANDLE", handle)
                 }
+
+                val slot = simInfo.slotIndex ?: if (requestedSim.contains("2") || requestedSim.contains("ٹو") || requestedSim.contains("two", ignoreCase = true)) 1 else 0
+                putExtra("com.android.phone.extra.slot", slot)
+                putExtra("simSlot", slot)
+                putExtra("slot", slot)
+                putExtra("Subscription", slot)
             }
 
             context.startActivity(callIntent)
             val elapsed = System.currentTimeMillis() - startTime
 
-            val actionDescription = if (hasCallPermission) "Initiated call to" else "Opened dialer for"
+            val actionDescription = if (hasCallPermission) "Calling" else "Opened dialer for"
             val simDescription = if (simInfo.appliedSlot != null) " via ${simInfo.appliedSlot}" else ""
             val note = if (!hasCallPermission) " (Dialer opened because CALL_PHONE permission is not granted)" else ""
             val limitNote = if (simInfo.limitationReason != null) " (${simInfo.limitationReason})" else ""
 
             ToolExecutionResult.success(
-                displayText = "$actionDescription $target ($resolvedNumber)$simDescription$note$limitNote. Call initiated; call connection depends on carrier and recipient.",
+                displayText = "$actionDescription $target ($resolvedNumber)$simDescription$note$limitNote.",
                 output = mapOf(
                     "target" to target,
                     "phoneNumber" to resolvedNumber,
@@ -120,18 +127,18 @@ class CallTool(
 
     private fun resolvePhoneNumber(target: String): String {
         val digitsOnly = target.filter { it.isDigit() || it == '+' }
-        if (digitsOnly.length >= 3) {
+        if (digitsOnly.length >= 3 && target.all { it.isDigit() || it == '+' || it == '-' || it == ' ' }) {
             return digitsOnly
         }
 
-        // Query contacts
+        // Query contacts using intelligent multilingual ContactMatcher
         val hasContactPermission = ContextCompat.checkSelfPermission(
             context,
             android.Manifest.permission.READ_CONTACTS
         ) == PackageManager.PERMISSION_GRANTED
 
         if (hasContactPermission) {
-            val contacts = ContactTool.searchContacts(context.contentResolver, target)
+            val contacts = ContactMatcher.findMatchingContacts(context.contentResolver, target)
             if (contacts.isNotEmpty()) {
                 return contacts.first().phoneNumber.filter { it.isDigit() || it == '+' }
             }
@@ -141,18 +148,24 @@ class CallTool(
 
     private data class SimResolution(
         val accountHandle: PhoneAccountHandle? = null,
+        val slotIndex: Int? = null,
         val appliedSlot: String? = null,
         val limitationReason: String? = null
     )
 
     private fun resolveSimAccount(simPreference: String): SimResolution {
-        if (simPreference.equals("Default SIM", ignoreCase = true)) {
-            return SimResolution(appliedSlot = "Default SIM")
+        val lower = simPreference.lowercase()
+        val isSim2 = lower.contains("2") || lower.contains("ٹو") || lower.contains("two") || lower.contains("دوسری")
+        val isSim1 = lower.contains("1") || lower.contains("ون") || lower.contains("one") || lower.contains("پہلی")
+        val targetSlot = if (isSim2) 1 else 0
+
+        if (simPreference.equals("Default SIM", ignoreCase = true) && !isSim1 && !isSim2) {
+            return SimResolution(appliedSlot = "Default SIM", slotIndex = 0)
         }
 
         try {
             val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-                ?: return SimResolution(limitationReason = "Telecom service unavailable")
+                ?: return SimResolution(appliedSlot = if (isSim2) "SIM 2" else "SIM 1", slotIndex = targetSlot, limitationReason = "Telecom service unavailable")
 
             val hasPhoneStatePermission = ContextCompat.checkSelfPermission(
                 context,
@@ -161,37 +174,39 @@ class CallTool(
 
             if (!hasPhoneStatePermission) {
                 return SimResolution(
-                    limitationReason = "READ_PHONE_STATE permission needed for hardware SIM selection. Falling back to default SIM."
+                    appliedSlot = if (isSim2) "SIM 2" else "SIM 1",
+                    slotIndex = targetSlot,
+                    limitationReason = "Using hardware slot index $targetSlot (grant READ_PHONE_STATE for account binding)."
                 )
             }
 
             val callCapableAccounts: List<PhoneAccountHandle> = telecomManager.callCapablePhoneAccounts ?: emptyList()
             if (callCapableAccounts.isEmpty()) {
-                return SimResolution(limitationReason = "No SIM accounts reported by TelecomManager.")
+                return SimResolution(
+                    appliedSlot = if (isSim2) "SIM 2" else "SIM 1",
+                    slotIndex = targetSlot,
+                    limitationReason = "Direct OEM slot $targetSlot applied."
+                )
             }
 
-            val slotIndex = when {
-                simPreference.contains("1") -> 0
-                simPreference.contains("2") -> 1
-                else -> 0
-            }
-
-            return if (slotIndex < callCapableAccounts.size) {
+            return if (targetSlot < callCapableAccounts.size) {
                 SimResolution(
-                    accountHandle = callCapableAccounts[slotIndex],
-                    appliedSlot = if (slotIndex == 0) "SIM 1" else "SIM 2"
+                    accountHandle = callCapableAccounts[targetSlot],
+                    slotIndex = targetSlot,
+                    appliedSlot = if (targetSlot == 0) "SIM 1" else "SIM 2"
                 )
             } else {
                 SimResolution(
                     accountHandle = callCapableAccounts.firstOrNull(),
+                    slotIndex = 0,
                     appliedSlot = "SIM 1",
-                    limitationReason = "Requested SIM slot $slotIndex not found. Falling back to primary SIM."
+                    limitationReason = "Requested SIM slot $targetSlot not found. Using primary SIM."
                 )
             }
         } catch (e: SecurityException) {
-            return SimResolution(limitationReason = "Permission restricted: ${e.message}")
+            return SimResolution(appliedSlot = if (isSim2) "SIM 2" else "SIM 1", slotIndex = targetSlot, limitationReason = "Permission restricted: ${e.message}")
         } catch (e: Exception) {
-            return SimResolution(limitationReason = "Telecom error: ${e.message}")
+            return SimResolution(appliedSlot = if (isSim2) "SIM 2" else "SIM 1", slotIndex = targetSlot, limitationReason = "Telecom error: ${e.message}")
         }
     }
 }

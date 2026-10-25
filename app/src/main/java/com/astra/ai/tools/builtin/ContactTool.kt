@@ -103,6 +103,12 @@ class ContactTool(
 
     companion object {
         fun searchContacts(resolver: ContentResolver, query: String): List<DiscoveredContact> {
+            val matched = ContactMatcher.findMatchingContacts(resolver, query)
+            if (matched.isNotEmpty()) {
+                return matched
+            }
+
+            // Fallback to legacy SQL LIKE
             val results = mutableListOf<DiscoveredContact>()
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
             val projection = arrayOf(

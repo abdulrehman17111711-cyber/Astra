@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Settings model for Astra AI.
+ * Includes Voice Profile, Gemini AI Configuration, Volume Button Trigger,
+ * and Subscription Management.
  */
 data class AstraSettings(
     val ttsSpeechRate: Float = 1.0f,
@@ -14,10 +16,17 @@ data class AstraSettings(
     val autoConfirmLowRiskTools: Boolean = true,
     val hapticFeedbackEnabled: Boolean = true,
     val darkThemeEnabled: Boolean = true,
-    val trustedAutomationEnabled: Boolean = false,
+    val trustedAutomationEnabled: Boolean = true,
     val rememberPermissionDecisions: Boolean = true,
-    val safeguardLevel: String = "BALANCED", // "STRICT", "BALANCED", "TRUSTED_AUTOMATION"
-    val trustedActions: Set<String> = emptySet(),
+    val safeguardLevel: String = "TRUSTED_AUTOMATION", // "STRICT", "BALANCED", "TRUSTED_AUTOMATION"
+    val trustedActions: Set<String> = setOf("call_tool", "call_contact", "whatsapp_tool", "device_unlock"),
+    val geminiApiKey: String = "",
+    val ownerName: String = AstraConstants.CREATOR_NAME,
+    val voiceMatchEnabled: Boolean = true,
+    val voicePasscode: String = "Astra Unlock",
+    val volumeButtonActivationEnabled: Boolean = true,
+    val subscriptionTier: String = "Astra Pro",
+    val subscriptionActive: Boolean = true,
     val developerName: String = AstraConstants.CREATOR_NAME,
     val appVersion: String = AstraConstants.APP_VERSION
 )
@@ -35,6 +44,11 @@ interface SettingsRepository {
     fun addTrustedAction(actionKey: String)
     fun removeTrustedAction(actionKey: String)
     fun clearTrustedActions()
+    fun setGeminiApiKey(key: String)
+    fun setOwnerName(name: String)
+    fun setVoiceMatchEnabled(enabled: Boolean)
+    fun setVoicePasscode(passcode: String)
+    fun setVolumeButtonActivation(enabled: Boolean)
 }
 
 class DefaultSettingsRepository : SettingsRepository {
@@ -83,5 +97,25 @@ class DefaultSettingsRepository : SettingsRepository {
 
     override fun clearTrustedActions() {
         _settings.value = _settings.value.copy(trustedActions = emptySet())
+    }
+
+    override fun setGeminiApiKey(key: String) {
+        _settings.value = _settings.value.copy(geminiApiKey = key.trim())
+    }
+
+    override fun setOwnerName(name: String) {
+        _settings.value = _settings.value.copy(ownerName = name.trim())
+    }
+
+    override fun setVoiceMatchEnabled(enabled: Boolean) {
+        _settings.value = _settings.value.copy(voiceMatchEnabled = enabled)
+    }
+
+    override fun setVoicePasscode(passcode: String) {
+        _settings.value = _settings.value.copy(voicePasscode = passcode.trim())
+    }
+
+    override fun setVolumeButtonActivation(enabled: Boolean) {
+        _settings.value = _settings.value.copy(volumeButtonActivationEnabled = enabled)
     }
 }

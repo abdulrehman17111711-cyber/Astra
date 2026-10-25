@@ -69,6 +69,18 @@ class WakeActivationManager(private val context: Context) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    val isBackgroundServiceRunning: StateFlow<Boolean> = WakeWordBackgroundService.isRunning
+
+    fun startBackgroundWakeWordService() {
+        WakeWordBackgroundService.start(context)
+        _backgroundStatus.value = BackgroundListeningStatus.AVAILABLE
+    }
+
+    fun stopBackgroundWakeWordService() {
+        WakeWordBackgroundService.stop(context)
+        _backgroundStatus.value = evaluateBackgroundListeningStatus()
+    }
+
     /**
      * Evaluates real Android OS restrictions on background microphone listening.
      */
@@ -77,12 +89,11 @@ class WakeActivationManager(private val context: Context) {
             return BackgroundListeningStatus.DISABLED
         }
 
-        // Android 10+ (API 29+) explicitly restricts background audio recording
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            BackgroundListeningStatus.RESTRICTED
-        } else {
-            if (isMicrophoneGranted()) BackgroundListeningStatus.AVAILABLE else BackgroundListeningStatus.RESTRICTED
+        if (WakeWordBackgroundService.isRunning.value) {
+            return BackgroundListeningStatus.AVAILABLE
         }
+
+        return if (isMicrophoneGranted()) BackgroundListeningStatus.AVAILABLE else BackgroundListeningStatus.RESTRICTED
     }
 
     /**

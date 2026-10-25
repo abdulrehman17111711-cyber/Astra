@@ -138,5 +138,10 @@ fun AstraStatusDisplay(
                 overflow = TextOverflow.Ellipsis
             )
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Visual Action Feedback Card for Calling, WhatsApp, TikTok, Screen Unlock & Telemetry
+        VisualActionFeedback(state = state)
     }
 }

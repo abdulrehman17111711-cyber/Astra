@@ -177,12 +177,16 @@ fun KeyboardInputSheet(
 
             // Natural Voice Prompt Suggestions Chips
             val naturalVoicePrompts = listOf(
+                "منان کو سم ون سے کال کرو",
+                "ماما کو سم ون سے کال کرو",
+                "واٹس ایپ پہ منان کو میسج کرو کہ جلدی گھر ا جائے",
+                "سلمان کو میسج کرو کہ گیم میں اجاؤ",
+                "موبائل انلاک کرو",
+                "TikTok pe Free Fire Pakistan official ki latest video search karo",
                 "YouTube par CID search karo",
                 "Ammi ko SIM 1 se call karo",
-                "WhatsApp par Ali ko message bhejo",
                 "Check karo mere phone mein TikTok installed hai ya nahi",
                 "Kal subah 7 baje alarm laga do",
-                "TikTok par is account ki latest video dhoondo",
                 "Battery kitni hai?"
             )
             Row(

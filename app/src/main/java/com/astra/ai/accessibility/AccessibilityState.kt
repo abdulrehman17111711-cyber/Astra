@@ -28,6 +28,18 @@ data class AccessibilityStateModel(
 }
 
 /**
+ * Incoming notification captured via Astra's Accessibility Service from other apps.
+ */
+data class CapturedNotification(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val packageName: String,
+    val appName: String,
+    val title: String,
+    val text: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+/**
  * Central state and helper coordinator for Astra's Accessibility subsystem.
  */
 object AccessibilityState {
@@ -128,5 +140,24 @@ object AccessibilityState {
                 lastUpdatedMs = System.currentTimeMillis()
             )
         }
+    }
+
+    private val _recentNotifications = MutableStateFlow<List<CapturedNotification>>(emptyList())
+    val recentNotifications: StateFlow<List<CapturedNotification>> = _recentNotifications.asStateFlow()
+
+    fun addNotification(notification: CapturedNotification) {
+        _recentNotifications.update { current ->
+            val filtered = current.filterNot {
+                it.packageName == notification.packageName &&
+                it.title == notification.title &&
+                it.text == notification.text
+            }
+            (listOf(notification) + filtered).take(40)
+        }
+        AstraLogger.i(TAG, "Captured notification from ${notification.appName}: \"${notification.title}\" - \"${notification.text}\"")
+    }
+
+    fun clearNotifications() {
+        _recentNotifications.value = emptyList()
     }
 }

@@ -348,14 +348,7 @@ fun MainAssistantScreen(
                     modifier = Modifier.testTag("astra_status_display")
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Subtle Discovery Action Pills (Natural Bilingual Commands)
-                QuickActionPills(
-                    onSelectAction = { prompt ->
-                        controller.processQuery(prompt)
-                    }
-                )
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Optional State Inspector for testing all 8 architecture states
                 AnimatedVisibility(
@@ -463,48 +456,6 @@ private fun TopAssistantBar(
     }
 }
 
-@Composable
-private fun QuickActionPills(
-    onSelectAction: (String) -> Unit
-) {
-    val naturalVoicePrompts = listOf(
-        "YouTube par CID search karo",
-        "Ammi ko SIM 1 se call karo",
-        "WhatsApp par Ali ko message bhejo ke main 10 minute mein aa raha hoon",
-        "TikTok par is account ki latest video dhoondo",
-        "Kal subah 7 baje alarm laga do",
-        "Check karo mere phone mein TikTok installed hai ya nahi",
-        "Battery kitni hai?",
-        "YouTube pe search karo CID",
-        "Camera kholo",
-        "Remember that my name is Abdul Rehman"
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        naturalVoicePrompts.forEach { action ->
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = AstraGlassSurfaceDark,
-                border = BorderStroke(1.dp, AstraGlassBorderDark.copy(alpha = 0.4f)),
-                onClick = { onSelectAction(action) }
-            ) {
-                Text(
-                    text = action,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun StateSimulatorBar(

@@ -30,8 +30,10 @@ data class StructuredIntent(
         const val ACTION_DEVICE_STATUS = "DEVICE_STATUS"
         const val ACTION_CLOCK = "CLOCK"
         const val ACTION_NOTIFICATION = "NOTIFICATION"
+        const val ACTION_READ_NOTIFICATION = "READ_NOTIFICATION"
         const val ACTION_REFRESH_APPS = "REFRESH_APPS"
         const val ACTION_ACCESSIBILITY = "ACCESSIBILITY"
+        const val ACTION_SYSTEM_CONTROL = "SYSTEM_CONTROL"
         const val ACTION_CONVERSATION = "CONVERSATION"
     }
 }

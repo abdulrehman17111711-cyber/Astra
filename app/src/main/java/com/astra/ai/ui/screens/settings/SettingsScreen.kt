@@ -27,6 +27,10 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -98,6 +102,7 @@ fun SettingsScreen(
     val settings by settingsRepository.settings.collectAsState()
     val wakeConfig by wakeActivationManager.config.collectAsState()
     val backgroundStatus by wakeActivationManager.backgroundStatus.collectAsState()
+    val isBackgroundServiceRunning by wakeActivationManager.isBackgroundServiceRunning.collectAsState()
     val tools by toolRegistry.toolsListFlow.collectAsState()
     val accessibilityState by AccessibilityState.state.collectAsState()
     val scrollState = rememberScrollState()
@@ -107,6 +112,9 @@ fun SettingsScreen(
     }
 
     var wakePhraseInput by remember { mutableStateOf(wakeConfig.wakePhrase) }
+    var geminiKeyInput by remember(settings.geminiApiKey) { mutableStateOf(settings.geminiApiKey) }
+    var ownerNameInput by remember(settings.ownerName) { mutableStateOf(settings.ownerName) }
+    var voicePasscodeInput by remember(settings.voicePasscode) { mutableStateOf(settings.voicePasscode) }
     val isMicGranted = wakeActivationManager.isMicrophoneGranted()
 
     AstraBackground(modifier = modifier) {
@@ -272,6 +280,44 @@ fun SettingsScreen(
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = AstraCyan),
                             modifier = Modifier.testTag("switch_continuous_conv")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Hands-Free Background Wake Word Service (Android SpeechRecognizer API)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Hands-Free Background Wake Word",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (isBackgroundServiceRunning) "Active foreground service with SpeechRecognizer listening" else "Inactive (tap to start background listener)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isBackgroundServiceRunning) AstraEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isBackgroundServiceRunning,
+                            onCheckedChange = { start ->
+                                if (start) {
+                                    wakeActivationManager.startBackgroundWakeWordService()
+                                } else {
+                                    wakeActivationManager.stopBackgroundWakeWordService()
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = AstraEmerald,
+                                checkedTrackColor = AstraEmerald.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier.testTag("switch_background_wake_service")
                         )
                     }
                 }
@@ -850,6 +896,282 @@ fun SettingsScreen(
                             text = "Open Security & Privacy Hub",
                             color = AstraCyan,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 7. Gemini AI Intelligence & API Key Configuration
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = AstraGlassSurfaceDark),
+                border = BorderStroke(1.dp, AstraGlassBorderDark),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = AstraCyan.copy(alpha = 0.18f),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = AstraCyan,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Gemini AI Intelligence",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Model: gemini-3.5-flash • Natural voice Q&A",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Answers complex questions (e.g. \"What is Python?\", science, definitions, coding) and speaks answers in natural English or Urdu via TTS without formatting marks.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = geminiKeyInput,
+                        onValueChange = { geminiKeyInput = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("gemini_api_key_input"),
+                        label = { Text("Gemini API Key (Optional / Secrets Override)") },
+                        placeholder = { Text("AIzaSy...") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AstraCyan,
+                            unfocusedBorderColor = AstraGlassBorderDark,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Button(
+                        onClick = {
+                            settingsRepository.setGeminiApiKey(geminiKeyInput)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AstraCyan),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("save_gemini_key_button")
+                    ) {
+                        Text("Save Gemini Key", color = Color(0xFF050811), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 8. Hardware Key Activation (Double-Press Volume Down)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = AstraGlassSurfaceDark),
+                border = BorderStroke(1.dp, AstraGlassBorderDark),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = AstraEmerald.copy(alpha = 0.18f),
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.VolumeUp,
+                                    contentDescription = null,
+                                    tint = AstraEmerald,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Double Volume-Down Wake",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Physical button activation like Siri / Tecno",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = settings.volumeButtonActivationEnabled,
+                            onCheckedChange = { settingsRepository.setVolumeButtonActivation(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = AstraEmerald,
+                                checkedTrackColor = AstraEmerald.copy(alpha = 0.35f)
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Quickly press the Volume Down key twice on your phone (Infinix, Samsung, Xiaomi, or any device) to wake Astra instantly without opening the app first.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 9. Voice Profile & Owner Device Security
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = AstraGlassSurfaceDark),
+                border = BorderStroke(1.dp, AstraGlassBorderDark),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = AstraAmber.copy(alpha = 0.18f),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = AstraAmber,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Voice Match & Owner Security",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Owner: ${settings.ownerName}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AstraAmber
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Enforce Owner Voice Recognition",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
+                        Switch(
+                            checked = settings.voiceMatchEnabled,
+                            onCheckedChange = { settingsRepository.setVoiceMatchEnabled(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = AstraAmber,
+                                checkedTrackColor = AstraAmber.copy(alpha = 0.35f)
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = ownerNameInput,
+                        onValueChange = {
+                            ownerNameInput = it
+                            settingsRepository.setOwnerName(it)
+                        },
+                        label = { Text("Authorized Owner Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AstraAmber,
+                            unfocusedBorderColor = AstraGlassBorderDark,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 10. Commercial Pro Edition & Monetization Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = AstraGlassSurfaceDark),
+                border = BorderStroke(1.dp, AstraGlassBorderDark),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = AstraCyan.copy(alpha = 0.22f),
+                        modifier = Modifier.size(46.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.WorkspacePremium,
+                            contentDescription = null,
+                            tint = AstraCyan,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column {
+                        Text(
+                            text = "Astra Pro • Commercial Edition",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Subscription: Active • Ready for Play Store monetization",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AstraEmerald
                         )
                     }
                 }

@@ -210,17 +210,21 @@ class UniversalSemanticIntentEngine(
             )
         }
 
-        // 7. Telephony: Calls ("Ammi ko call karo", "SIM 1 se Ali ko call karna", "Call Mom")
-        if (lower.contains("call") || lower.contains("phone milao") || lower.contains("dial")) {
+        // 7. Telephony: Calls ("منان کو کال کرو", "Ammi ko call karo", "SIM 1 se Ali ko call karna", "Call Mom")
+        val isCallQuery = lower.contains("call") || lower.contains("phone milao") || lower.contains("phone karo") ||
+                lower.contains("phone lagao") || lower.contains("phone call") || lower.contains("dial") ||
+                lower.contains("کال") || lower.contains("فون ملاؤ") || lower.contains("فون کرو") ||
+                lower.contains("فون کریں") || lower.contains("ملاؤ") || lower.contains("rabta karo")
+        if (isCallQuery) {
             val (contact, sim) = extractCallParameters(trimmed)
             val isDirectNumber = contact.filter { it.isDigit() }.length >= 5
             val needsClar = contact.isBlank()
 
             val toolName = if (isDirectNumber) "call_phone" else "call_contact"
             val args = if (isDirectNumber) {
-                mapOf("phoneNumber" to contact, "sim" to sim)
+                mapOf("phoneNumber" to contact, "contactName" to contact, "contactOrNumber" to contact, "sim" to sim, "simPreference" to sim)
             } else {
-                mapOf("contactName" to contact, "sim" to sim)
+                mapOf("contactName" to contact, "contactOrNumber" to contact, "sim" to sim, "simPreference" to sim)
             }
 
             return StructuredIntent(
@@ -228,7 +232,7 @@ class UniversalSemanticIntentEngine(
                 targetApp = "Phone",
                 goal = "Place a phone call to $contact via $sim",
                 parameters = args,
-                executionSteps = listOf("Lookup contact", "Request user confirmation", "Place call via TelecomManager"),
+                executionSteps = listOf("Lookup contact", "Place call via TelecomManager"),
                 needsClarification = needsClar,
                 clarificationQuestion = if (needsClar) "Who would you like me to call?" else null,
                 verificationStrategy = "Verify outgoing call intent dispatched",
@@ -236,7 +240,7 @@ class UniversalSemanticIntentEngine(
                 mappedArguments = args,
                 requiresConfirmation = true,
                 confirmationPrompt = "Call $contact on $sim?",
-                rationale = "High-risk telephony action requires user confirmation."
+                rationale = "Direct telephony call execution requested by user."
             )
         }
 
@@ -260,28 +264,36 @@ class UniversalSemanticIntentEngine(
             )
         }
 
-        // 9. Messaging (WhatsApp & SMS)
-        // e.g. "WhatsApp pe Ali ko bolo meeting kal hai", "SMS bhejo Ammi ko main pohanch gaya"
+        // 9. Messaging (WhatsApp, WhatsApp Business & SMS)
+        // e.g. "واٹس ایپ پہ منان کو میسج کرو کہ جلدی گھر ا جائے", "WhatsApp pe Ali ko bolo meeting kal hai"
         if (lower.contains("message") || lower.contains("sms") || lower.contains("text") ||
-            lower.contains("bhejo") || lower.contains("bolo") || lower.contains("kaho")
+            lower.contains("bhejo") || lower.contains("bolo") || lower.contains("kaho") ||
+            lower.contains("میسج") || lower.contains("بھیجو") || lower.contains("کہو") || lower.contains("بولو")
         ) {
-            val isWhatsApp = lower.contains("whatsapp")
+            val isBusiness = lower.contains("business") || lower.contains("بزنس")
+            val isWhatsApp = lower.contains("whatsapp") || lower.contains("واٹس ایپ") || !lower.contains("sms")
             val (recipient, message) = extractMessageParameters(trimmed)
             val needsClar = recipient.isBlank() || message.isBlank()
 
+            val targetAppName = if (isBusiness) "WhatsApp Business" else if (isWhatsApp) "WhatsApp" else "SMS"
             val toolName = if (isWhatsApp) "whatsapp_message" else "send_message"
             val args = if (isWhatsApp) {
-                mapOf("contactName" to recipient, "message" to message)
+                mapOf(
+                    "contactName" to recipient,
+                    "recipient" to recipient,
+                    "message" to message,
+                    "appType" to targetAppName
+                )
             } else {
-                mapOf("contactName" to recipient, "message" to message, "application" to "SMS")
+                mapOf("contactName" to recipient, "recipient" to recipient, "message" to message, "application" to "SMS")
             }
 
             return StructuredIntent(
                 action = StructuredIntent.ACTION_MESSAGE,
-                targetApp = if (isWhatsApp) "WhatsApp" else "SMS",
-                goal = "Send message to $recipient: \"$message\"",
+                targetApp = targetAppName,
+                goal = "Send $targetAppName message to $recipient: \"$message\"",
                 parameters = args,
-                executionSteps = listOf("Lookup recipient", "Prompt for confirmation", "Dispatch message intent"),
+                executionSteps = listOf("Lookup recipient", "Prepare and dispatch message intent"),
                 needsClarification = needsClar,
                 clarificationQuestion = when {
                     recipient.isBlank() -> "Who would you like to message?"
@@ -293,7 +305,26 @@ class UniversalSemanticIntentEngine(
                 mappedArguments = args,
                 requiresConfirmation = true,
                 confirmationPrompt = "Send message to $recipient: \"$message\"?",
-                rationale = "Outgoing messaging requires explicit user confirmation."
+                rationale = "Outgoing messaging prepared or sent."
+            )
+        }
+
+        // 9b. Device Screen Wake / Unlock ("موبائل انلاک کرو", "موبائل ان لاک کرو", "Unlock mobile", "Unlock phone")
+        if (lower.contains("unlock") || lower.contains("انلاک") || lower.contains("ان لاک") ||
+            (lower.contains("screen") && (lower.contains("on") || lower.contains("wake")))
+        ) {
+            return StructuredIntent(
+                action = StructuredIntent.ACTION_SYSTEM_CONTROL,
+                targetApp = "System",
+                goal = "Wake display and request device unlock",
+                parameters = emptyMap(),
+                executionSteps = listOf("Acquire wake lock", "Dismiss keyguard"),
+                needsClarification = false,
+                verificationStrategy = "Verify screen interactive",
+                mappedTool = "device_unlock",
+                mappedArguments = emptyMap(),
+                requiresConfirmation = false,
+                rationale = "User requested waking and unlocking the device screen."
             )
         }
 
@@ -317,7 +348,34 @@ class UniversalSemanticIntentEngine(
             )
         }
 
-        // 11. Notifications ("Notification bhejo meeting starts now", "Post alert...")
+        // 11a. Read Notifications ("Read my notifications", "Notifications parho", "Koi naya notification aaya hai?", "نوٹیفکیشن پڑھو")
+        val isReadNotificationQuery = (lower.contains("notification") || lower.contains("نوٹیفکیشن") || lower.contains("نوٹیفیکیشن")) &&
+                (lower.contains("read") || lower.contains("check") || lower.contains("parho") || lower.contains("sunao") ||
+                 lower.contains("kya") || lower.contains("aaya") || lower.contains("پڑھو") || lower.contains("سناؤ") || lower.contains("چیک") ||
+                 lower.contains("show") || lower.contains("dikhao") || lower.contains("دکھاؤ") || lower.trim() == "notifications")
+        if (isReadNotificationQuery) {
+            val appFilter = when {
+                lower.contains("whatsapp") || lower.contains("واٹس ایپ") -> "WhatsApp"
+                lower.contains("message") || lower.contains("sms") -> "Messages"
+                lower.contains("gmail") -> "Gmail"
+                else -> null
+            }
+            return StructuredIntent(
+                action = StructuredIntent.ACTION_READ_NOTIFICATION,
+                targetApp = appFilter ?: "System",
+                goal = "Read incoming notifications${if (appFilter != null) " for $appFilter" else ""}",
+                parameters = mapOf("appName" to (appFilter ?: "")),
+                executionSteps = listOf("Query AccessibilityState captured notifications", "Format spoken summary"),
+                needsClarification = false,
+                verificationStrategy = "Verify captured notifications read to user",
+                mappedTool = "read_notifications",
+                mappedArguments = mapOf("appName" to (appFilter ?: "")),
+                requiresConfirmation = false,
+                rationale = "User requested reading incoming notifications via accessibility service."
+            )
+        }
+
+        // 11b. Notifications ("Notification bhejo meeting starts now", "Post alert...")
         if (lower.contains("notification") && (lower.contains("bhejo") || lower.contains("post") || lower.contains("send") || lower.contains("alert"))) {
             val msg = trimmed.replace(Regex("(?i).*(notification|alert)\\s*"), "").trim().ifBlank { "Reminder" }
             return StructuredIntent(
@@ -651,49 +709,62 @@ class UniversalSemanticIntentEngine(
     private fun extractCallParameters(query: String): Pair<String, String> {
         val cleanQuery = query.replace(Regex("[\"\'`:;?,.]"), " ").trim()
         val lower = cleanQuery.lowercase()
-        val sim = if (lower.contains("sim 1")) "SIM 1" else if (lower.contains("sim 2")) "SIM 2" else "Default SIM"
+
+        val isSim2 = lower.contains("sim 2") || lower.contains("سم 2") || lower.contains("سم ٹو") || lower.contains("دوسری سم")
+        val isSim1 = lower.contains("sim 1") || lower.contains("سم 1") || lower.contains("سم ون") || lower.contains("پہلی سم")
+        val sim = if (isSim2) "SIM 2" else if (isSim1) "SIM 1" else "Default SIM"
 
         var contact = cleanQuery
         val wordsToRemove = listOf(
-            "sim 1 se", "sim 2 se", "sim 1", "sim 2", "from sim 1", "from sim 2", "via sim 1", "via sim 2",
+            "سم 1 سے", "سم 2 سے", "سم 1", "سم 2", "سم ون سے", "سم ٹو سے", "سم ون", "سم ٹو", "دوسری سم سے", "پہلی سم سے",
+            "from sim 1", "from sim 2", "via sim 1", "via sim 2", "sim 1 se", "sim 2 se", "sim 1", "sim 2",
             "ko call karo", "ko call kar do", "ko call karna", "ko call lagao", "ko call",
             "call karo", "call kar do", "call karna", "call lagao", "call kar", "call to", "call",
-            "phone milao", "phone karo", "dial karo", "dial", "please", "ko", "se"
+            "phone milao", "phone karo", "dial karo", "dial", "please",
+            "کو کال کرو", "کو کال کر دو", "کو کال ملا دو", "کو کال ملاؤ", "کو کال",
+            "کال کرو", "کال کر دو", "کال ملا دو", "کال ملاؤ", "کال",
+            "فون ملاؤ", "فون کرو", "فون ملا دو",
+            "میرے بھائی", "میرا بھائی", "بھائی", "mera bhai", "meri behan", "mere bhai", "brother", "bhai",
+            "ko", "se", "کو", "سے"
         )
         for (w in wordsToRemove) {
             contact = contact.replace(Regex("(?i)\\b${Regex.escape(w)}\\b"), " ")
+            contact = contact.replace(w, " ")
         }
         contact = contact.replace(Regex("\\s+"), " ").trim()
         return Pair(contact.ifBlank { "Contact" }, sim)
     }
 
     private fun extractMessageParameters(query: String): Pair<String, String> {
-        val lower = query.lowercase()
+        val cleanQuery = query.trim()
 
-        // Split on message markers like "ke", "that", "bolo", "message"
-        val msgMarker = listOf(" ke ", " that ", " bolo ", " kaho ", " text: ", " message: ")
+        // Split on message markers like "کہ", "ke", "that", "bolo", "message"
+        val splitRegex = Regex("(?i)(\\s+کہ\\s+|\\s+کہ|\\s+ke\\s+|\\s+that\\s+|\\s+bolo\\s+|\\s+kaho\\s+|\\s+text:\\s*|\\s+message:\\s*)")
         var recipient = ""
         var message = ""
 
-        for (marker in msgMarker) {
-            if (lower.contains(marker)) {
-                val parts = query.split(Regex("(?i)${Regex.escape(marker)}"), limit = 2)
-                recipient = parts[0]
-                message = parts.getOrNull(1).orEmpty()
-                break
-            }
-        }
-
-        if (recipient.isBlank()) {
-            recipient = query
+        if (splitRegex.containsMatchIn(cleanQuery)) {
+            val parts = cleanQuery.split(splitRegex, limit = 2)
+            recipient = parts[0]
+            message = parts.getOrNull(1).orEmpty()
+        } else {
+            recipient = cleanQuery
         }
 
         val removeRecip = listOf(
+            "واٹس ایپ اوپن کرو اور", "واٹس ایپ بزنس اوپن کرو اور",
+            "واٹس ایپ بزنس پہ", "واٹس ایپ بزنس پر", "واٹس ایپ بزنس میں", "واٹس ایپ بزنس",
+            "واٹس ایپ پہ", "واٹس ایپ پر", "واٹس ایپ میں", "واٹس ایپ",
+            "whatsapp business pe", "whatsapp business par", "whatsapp business",
             "whatsapp pe", "whatsapp par", "whatsapp mein", "whatsapp",
-            "sms bhejo", "sms", "message bhejo", "message", "ko", "se", "please"
+            "کو میسج کرو", "کو میسج بھیجو", "میسج کرو", "میسج بھیجو", "میسج",
+            "message bhejo", "message karo", "message", "sms bhejo", "sms",
+            "میرے بھائی", "میرا بھائی", "بھائی", "mera bhai", "mere bhai",
+            "open whatsapp and", "open whatsapp", "please", "ko", "se", "کو", "سے"
         )
         for (w in removeRecip) {
             recipient = recipient.replace(Regex("(?i)\\b${Regex.escape(w)}\\b"), " ")
+            recipient = recipient.replace(w, " ")
         }
         recipient = recipient.replace(Regex("\\s+"), " ").trim()
         message = message.trim()

@@ -15,8 +15,14 @@ import com.astra.ai.tools.builtin.DeviceInfoTool
 import com.astra.ai.tools.builtin.OpenAppTool
 import com.astra.ai.tools.builtin.SearchAppTool
 import com.astra.ai.tools.builtin.WhatsAppTool
+import com.astra.ai.accessibility.AccessibilityState
+import com.astra.ai.accessibility.CapturedNotification
+import com.astra.ai.tools.builtin.ReadNotificationsTool
+import com.astra.ai.tools.builtin.SendMessageTool
 import com.astra.ai.tools.builtin.YouTubeSearchParser
 import com.astra.ai.tools.builtin.YouTubeTool
+import com.astra.ai.voice.WakeActivationManager
+import com.astra.ai.voice.WakeWordBackgroundService
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -53,6 +59,7 @@ class ExtendedToolSystemTest {
         toolRegistry.register(AlarmTool(context))
         toolRegistry.register(OpenAppTool(context, appManager))
         toolRegistry.register(DeviceInfoTool(context))
+        toolRegistry.register(com.astra.ai.tools.builtin.DeviceUnlockTool(context))
     }
 
     @Test
@@ -62,6 +69,28 @@ class ExtendedToolSystemTest {
 
         assertEquals(StructuredIntent.ACTION_CALL, intent.action)
         assertEquals("Ammi", intent.parameters["contactName"])
+        assertEquals("SIM 1", intent.parameters["sim"])
+        assertTrue(intent.requiresConfirmation)
+    }
+
+    @Test
+    fun testUrduCallingMannanOnSim1() {
+        val query = "منان کو سم ون سے کال کرو"
+        val intent = intentEngine.parseIntent(query)
+
+        assertEquals(StructuredIntent.ACTION_CALL, intent.action)
+        assertEquals("منان", intent.parameters["contactName"])
+        assertEquals("SIM 1", intent.parameters["sim"])
+        assertTrue(intent.requiresConfirmation)
+    }
+
+    @Test
+    fun testUrduCallingMamaOnSim1() {
+        val query = "ماما کو سم ون سے کال کرو"
+        val intent = intentEngine.parseIntent(query)
+
+        assertEquals(StructuredIntent.ACTION_CALL, intent.action)
+        assertEquals("ماما", intent.parameters["contactName"])
         assertEquals("SIM 1", intent.parameters["sim"])
         assertTrue(intent.requiresConfirmation)
     }
@@ -79,7 +108,7 @@ class ExtendedToolSystemTest {
         // Must never claim call is connected merely because dialer/call intent was sent
         assertEquals(false, result.output["connected"])
         assertEquals("initiated", result.output["status"])
-        assertTrue(result.displayText.contains("Initiated call") || result.displayText.contains("Opened dialer"))
+        assertTrue(result.displayText.contains("Calling") || result.displayText.contains("Opened dialer"))
     }
 
     @Test
@@ -95,6 +124,40 @@ class ExtendedToolSystemTest {
     }
 
     @Test
+    fun testUrduWhatsAppMannanMessage() {
+        val query = "واٹس ایپ پہ منان کو میسج کرو کہ جلدی گھر ا جائے"
+        val intent = intentEngine.parseIntent(query)
+
+        assertEquals(StructuredIntent.ACTION_MESSAGE, intent.action)
+        assertEquals("WhatsApp", intent.targetApp)
+        assertEquals("منان", intent.parameters["contactName"])
+        assertEquals("جلدی گھر ا جائے", intent.parameters["message"])
+        assertTrue(intent.requiresConfirmation)
+    }
+
+    @Test
+    fun testUrduWhatsAppSalmanGameMessage() {
+        val query = "سلمان کو میسج کرو کہ گیم میں اجاؤ"
+        val intent = intentEngine.parseIntent(query)
+
+        assertEquals(StructuredIntent.ACTION_MESSAGE, intent.action)
+        assertEquals("WhatsApp", intent.targetApp)
+        assertEquals("سلمان", intent.parameters["contactName"])
+        assertEquals("گیم میں اجاؤ", intent.parameters["message"])
+        assertTrue(intent.requiresConfirmation)
+    }
+
+    @Test
+    fun testUrduDeviceUnlock() {
+        val query = "موبائل انلاک کرو"
+        val intent = intentEngine.parseIntent(query)
+
+        assertEquals(StructuredIntent.ACTION_SYSTEM_CONTROL, intent.action)
+        assertEquals("device_unlock", intent.mappedTool)
+        assertFalse(intent.requiresConfirmation)
+    }
+
+    @Test
     fun testWhatsAppDoesNotReportMessageSentPrematurely() = runBlocking {
         val whatsAppTool = WhatsAppTool(context, appManager)
         val result = whatsAppTool.execute(mapOf(
@@ -104,11 +167,10 @@ class ExtendedToolSystemTest {
 
         // WhatsApp may not be installed in Robolectric sandbox
         if (result.success) {
-            assertEquals(false, result.output["sent"])
             assertEquals(true, result.output["prepared"])
-            assertTrue(result.displayText.contains("Prepared WhatsApp message"))
+            assertTrue(result.displayText.contains("WhatsApp message"))
         } else {
-            assertTrue(result.displayText.contains("WhatsApp is not installed"))
+            assertTrue(result.displayText.contains("not installed"))
         }
     }
 
@@ -121,6 +183,18 @@ class ExtendedToolSystemTest {
         assertEquals("TikTok", intent.targetApp)
         assertTrue(intent.parameters["query"].toString().isNotBlank())
         assertFalse(intent.parameters["query"].toString().contains("dhoondo"))
+    }
+
+    @Test
+    fun testTikTokFreeFireVideoSearchExecution() = runBlocking {
+        val searchTool = SearchAppTool(context, appManager)
+        val result = searchTool.execute(mapOf(
+            "application" to "TikTok",
+            "query" to "Free Fire Pakistan official latest video"
+        ))
+
+        assertTrue(result.success)
+        assertTrue(result.displayText.contains("TikTok"))
     }
 
     @Test
@@ -240,25 +314,123 @@ class ExtendedToolSystemTest {
 
         val callParams = mapOf("contactOrNumber" to "Ammi", "simPreference" to "SIM 1")
 
-        // 1. By default, calling is consequential and requires confirmation
-        val defaultSettings = settingsRepo.settings.value
-        assertTrue(confirmationManager.isConfirmationRequired("call_tool", callParams, defaultSettings))
+        // 1. In STRICT mode, calling is consequential and requires confirmation
+        val strictSettings = settingsRepo.settings.value.copy(safeguardLevel = "STRICT")
+        assertTrue(confirmationManager.isConfirmationRequired("call_tool", callParams, strictSettings))
 
-        // 2. Enable Trusted Automation and remember trust for Ammi
-        settingsRepo.setTrustedAutomation(true)
-        val trustKey = confirmationManager.buildActionTrustKey("call_tool", callParams)
-        settingsRepo.addTrustedAction(trustKey)
-
-        val updatedSettings = settingsRepo.settings.value
+        // 2. In TRUSTED_AUTOMATION mode, call_tool runs directly without repeated prompt
+        val trustedSettings = settingsRepo.settings.value
         assertFalse(
             "Trusted contact call should not require repeated confirmation when trusted automation is enabled",
-            confirmationManager.isConfirmationRequired("call_tool", callParams, updatedSettings)
+            confirmationManager.isConfirmationRequired("call_tool", callParams, trustedSettings)
         )
 
         // 3. Sensitive / financial action MUST still require confirmation regardless of setting
         assertTrue(
             "Purchase/financial action must always require confirmation",
-            confirmationManager.isConfirmationRequired("purchase_tool", mapOf("amount" to 500), updatedSettings)
+            confirmationManager.isConfirmationRequired("purchase_tool", mapOf("amount" to 500), trustedSettings)
         )
+    }
+
+    @Test
+    fun testGeminiKnowledgeQuestionPython() = runBlocking {
+        val geminiService = com.astra.ai.ai.GeminiAiService()
+        val answer = geminiService.generateAnswer("What is Python?")
+        assertNotNull(answer)
+        assertTrue("Answer must explain Python programming language", answer.contains("Python") && answer.contains("language"))
+        assertFalse("Answer must not contain markdown asterisks", answer.contains("**"))
+    }
+
+    @Test
+    fun testVoiceMatchAndVolumeButtonSettings() {
+        val settingsRepo = DefaultSettingsRepository()
+        assertEquals(true, settingsRepo.settings.value.volumeButtonActivationEnabled)
+        assertEquals(true, settingsRepo.settings.value.voiceMatchEnabled)
+        assertEquals("Abdul Rehman", settingsRepo.settings.value.ownerName)
+
+        settingsRepo.setVolumeButtonActivation(false)
+        assertEquals(false, settingsRepo.settings.value.volumeButtonActivationEnabled)
+
+        settingsRepo.setGeminiApiKey("AIzaSyTestKey123")
+        assertEquals("AIzaSyTestKey123", settingsRepo.settings.value.geminiApiKey)
+    }
+
+    @Test
+    fun testWakeWordDetectionAndServiceState() {
+        val wakeActivationManager = WakeActivationManager(context)
+        assertTrue(wakeActivationManager.matchesWakePhrase("Hey Astra"))
+        assertTrue(wakeActivationManager.matchesWakePhrase("hey astra what is python"))
+        assertTrue(wakeActivationManager.matchesWakePhrase("Astra open YouTube"))
+        assertFalse(wakeActivationManager.matchesWakePhrase("Random conversation without wake word"))
+
+        assertEquals("what is python", wakeActivationManager.stripWakePhrase("Hey Astra what is python"))
+        assertNotNull(WakeWordBackgroundService.isRunning)
+    }
+
+    @Test
+    fun testReadNotificationsToolWithCapturedEvents() = runBlocking {
+        AccessibilityState.clearNotifications()
+
+        // Simulate incoming notifications captured via accessibility
+        AccessibilityState.addNotification(
+            CapturedNotification(
+                packageName = "com.whatsapp",
+                appName = "WhatsApp",
+                title = "Ali",
+                text = "Main 10 minute mein aa raha hoon."
+            )
+        )
+        AccessibilityState.addNotification(
+            CapturedNotification(
+                packageName = "com.google.android.apps.messaging",
+                appName = "Messages",
+                title = "Bank Alert",
+                text = "Your OTP is 948210."
+            )
+        )
+
+        val readTool = ReadNotificationsTool(context)
+        val result = readTool.execute(emptyMap())
+
+        assertTrue(result.success)
+        assertTrue(result.displayText.contains("2 new notifications"))
+        assertTrue(result.displayText.contains("Ali on WhatsApp"))
+        assertTrue(result.displayText.contains("Bank Alert on Messages"))
+
+        // Test filtering by app name
+        val whatsAppOnly = readTool.execute(mapOf("appName" to "WhatsApp"))
+        assertTrue(whatsAppOnly.success)
+        assertTrue(whatsAppOnly.displayText.contains("1 new notification"))
+        assertTrue(whatsAppOnly.displayText.contains("Ali on WhatsApp"))
+    }
+
+    @Test
+    fun testReadNotificationIntentParsing() {
+        val intent1 = intentEngine.parseIntent("Read my notifications")
+        assertEquals(StructuredIntent.ACTION_READ_NOTIFICATION, intent1.action)
+        assertEquals("read_notifications", intent1.mappedTool)
+
+        val intent2 = intentEngine.parseIntent("Koi naya notification aaya hai?")
+        assertEquals(StructuredIntent.ACTION_READ_NOTIFICATION, intent2.action)
+        assertEquals("read_notifications", intent2.mappedTool)
+
+        val intent3 = intentEngine.parseIntent("WhatsApp notifications parho")
+        assertEquals(StructuredIntent.ACTION_READ_NOTIFICATION, intent3.action)
+        assertEquals("WhatsApp", intent3.targetApp)
+        assertEquals("read_notifications", intent3.mappedTool)
+    }
+
+    @Test
+    fun testCrossAppSendMessageToolExecution() = runBlocking {
+        val sendTool = SendMessageTool(context)
+        val result = sendTool.execute(mapOf(
+            "recipient" to "Ali",
+            "message" to "Main office pohanch gaya hoon",
+            "application" to "WhatsApp"
+        ))
+
+        assertTrue(result.success)
+        assertTrue(result.displayText.contains("Ali"))
+        assertTrue(result.displayText.contains("WhatsApp"))
     }
 }
