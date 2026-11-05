@@ -17,28 +17,63 @@ object ContactMatcher {
 
     private const val TAG = "ContactMatcher"
 
-    // Common Urdu script to Roman Urdu / English dictionary for frequent contacts & relationships
+    // Comprehensive Urdu script to Roman Urdu / English dictionary for frequent contacts & relationships
     private val scriptAliases = mapOf(
         "منان" to listOf("mannan", "manan", "abdul mannan"),
         "ماما" to listOf("mama", "mom", "ammi", "mother", "ami"),
         "امی" to listOf("ammi", "ami", "mom", "mother", "mama"),
         "اممی" to listOf("ammi", "ami", "mom", "mother", "mama"),
         "سلمان" to listOf("salman", "sulman"),
-        "علی" to listOf("ali"),
-        "عثمان" to listOf("usman", "osman"),
+        "علی" to listOf("ali", "alee", "aly"),
+        "عثمان" to listOf("usman", "osman", "uthman"),
+        "عمر" to listOf("umar", "omer", "omar"),
         "احمد" to listOf("ahmad", "ahmed"),
-        "محمد" to listOf("muhammad", "mohammad", "mohd"),
-        "حمزہ" to listOf("hamza"),
-        "بلال" to listOf("bilal"),
+        "محمد" to listOf("muhammad", "mohammad", "mohd", "muhammed"),
+        "طارق" to listOf("tariq", "tareeq"),
+        "حمزہ" to listOf("hamza", "humza"),
+        "بلال" to listOf("bilal", "belaal"),
         "حسن" to listOf("hassan", "hasan"),
         "حسین" to listOf("hussain", "husain"),
+        "وقاص" to listOf("waqas", "waqqas"),
+        "کاشف" to listOf("kashif", "kasheef"),
+        "اسد" to listOf("asad"),
+        "بابر" to listOf("babar"),
+        "فیضان" to listOf("faizan"),
+        "فریحہ" to listOf("fariha", "fareeha", "pariha", "dmp fariha", "dmp fareeha"),
+        "پریحہ" to listOf("fariha", "fareeha", "pariha", "dmp fariha", "dmp fareeha"),
+        "ذیشان" to listOf("zeeshan", "zishan"),
+        "شاہ زیب" to listOf("shahzaib", "shahzeb"),
+        "محسن" to listOf("mohsin", "mohsen"),
+        "رضوان" to listOf("rizwan"),
+        "کامران" to listOf("kamran"),
+        "فرحان" to listOf("farhan"),
+        "راشد" to listOf("rashid"),
+        "عمران" to listOf("imran"),
+        "شعیب" to listOf("shoaib", "shoieb"),
+        "شاہد" to listOf("shahid"),
+        "زاہد" to listOf("zahid"),
+        "نوید" to listOf("naveed", "navid"),
+        "نعیم" to listOf("naeem", "naim"),
+        "ندیم" to listOf("nadeem", "nadim"),
+        "وسیم" to listOf("waseem", "wasim"),
+        "عاطف" to listOf("atif"),
+        "عاصم" to listOf("asim"),
+        "فہد" to listOf("fahad"),
+        "سعد" to listOf("saad"),
+        "طلحہ" to listOf("talha"),
         "بابا" to listOf("baba", "abu", "abba", "father", "dad"),
         "ابو" to listOf("abu", "abba", "baba", "father", "dad"),
         "بھائی" to listOf("bhai", "brother"),
         "بہن" to listOf("behan", "sister"),
         "دوست" to listOf("dost", "friend"),
         "بیٹا" to listOf("beta", "son"),
-        "بیٹی" to listOf("beti", "daughter")
+        "بیٹی" to listOf("beti", "daughter"),
+        "بیوی" to listOf("biwi", "wife"),
+        "شوہر" to listOf("shohar", "husband"),
+        "باس" to listOf("boss"),
+        "ڈرائیور" to listOf("driver"),
+        "آفس" to listOf("office"),
+        "گھر" to listOf("home", "ghar")
     )
 
     // Reverse mapping from Latin to Urdu
@@ -53,18 +88,30 @@ object ContactMatcher {
     }
 
     /**
-     * Searches device contacts using multi-strategy matching:
-     * 1. Exact or partial SQL query
-     * 2. Script alias translation (Urdu <-> English/Roman Urdu)
-     * 3. Transliteration matching
-     * 4. Full contact list fuzzy ranking
+     * Searches device contacts and custom address book using multi-strategy matching:
+     * 1. Custom Address Book lookup (from AstraSettings)
+     * 2. Direct exact match (case-insensitive)
+     * 3. Exact containment (e.g. "Mannan Bhai" contains "Mannan")
+     * 4. Script Alias lookup (Urdu <-> Latin)
+     * 5. Transliteration matching
+     * 6. Consonant-skeleton matching (vowel-independent match)
+     * 7. Full contact list fuzzy ranking
+     * 8. Direct ContactsContract filter query
      */
-    fun findMatchingContacts(resolver: ContentResolver, query: String): List<DiscoveredContact> {
+    fun findMatchingContacts(
+        resolver: ContentResolver,
+        query: String,
+        customContacts: Map<String, String> = emptyMap()
+    ): List<DiscoveredContact> {
         val cleanQuery = query.trim()
         if (cleanQuery.isBlank()) return emptyList()
 
         val normalizedQuery = cleanQuery.lowercase(Locale.ROOT)
-        val allContacts = loadAllPhoneContacts(resolver)
+
+        val customDiscovered = customContacts.map { (name, number) ->
+            DiscoveredContact("custom_${name.hashCode()}", name, number)
+        }
+        val allContacts = loadAllPhoneContacts(resolver) + customDiscovered
 
         if (allContacts.isEmpty()) {
             return emptyList()
@@ -122,7 +169,20 @@ object ContactMatcher {
             }
         }
 
-        // Strategy 5: Fuzzy word-level token similarity
+        // Strategy 5: Consonant-skeleton matching (Soundex-style for South Asian names)
+        val querySkeleton = extractConsonantSkeleton(if (transliterated.isNotBlank()) transliterated else cleanQuery)
+        if (querySkeleton.length >= 2) {
+            val skeletonMatches = allContacts.filter { contact ->
+                val contactSkeleton = extractConsonantSkeleton(contact.name)
+                contactSkeleton.contains(querySkeleton) || querySkeleton.contains(contactSkeleton)
+            }
+            if (skeletonMatches.isNotEmpty()) {
+                AstraLogger.i(TAG, "Found contact via consonant skeleton ($querySkeleton): ${skeletonMatches.map { it.name }}")
+                return skeletonMatches
+            }
+        }
+
+        // Strategy 6: Fuzzy word-level token similarity
         val queryTokens = cleanQuery.split(Regex("\\s+")).filter { it.length > 1 }
         val fuzzyMatches = allContacts.filter { contact ->
             val contactTokens = contact.name.split(Regex("\\s+"))
@@ -134,6 +194,12 @@ object ContactMatcher {
         }
         if (fuzzyMatches.isNotEmpty()) {
             return fuzzyMatches
+        }
+
+        // Strategy 7: Direct filter query via ContentProvider
+        val filtered = queryByFilter(resolver, cleanQuery)
+        if (filtered.isNotEmpty()) {
+            return filtered
         }
 
         return emptyList()
@@ -249,5 +315,49 @@ object ContactMatcher {
             newCost = swap
         }
         return cost[lhsLen]
+    }
+
+    fun extractConsonantSkeleton(input: String): String {
+        val lower = input.lowercase(Locale.ROOT)
+        val sb = StringBuilder()
+        for (ch in lower) {
+            when (ch) {
+                'a', 'e', 'i', 'o', 'u', 'y', 'h', ' ', '-', '\'', '.', '_' -> {}
+                'q', 'c' -> sb.append('k')
+                'w' -> sb.append('v')
+                'z', 'j' -> sb.append('z')
+                else -> if (ch.isLetter()) sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun queryByFilter(resolver: ContentResolver, query: String): List<DiscoveredContact> {
+        val results = mutableListOf<DiscoveredContact>()
+        try {
+            val filterUri = android.net.Uri.withAppendedPath(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI,
+                android.net.Uri.encode(query)
+            )
+            val projection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            )
+            resolver.query(filterUri, projection, null, null, null)?.use { c ->
+                val idCol = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+                val nameCol = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numCol = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (c.moveToNext()) {
+                    val id = if (idCol >= 0) c.getString(idCol) ?: "" else ""
+                    val name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    val num = if (numCol >= 0) c.getString(numCol) ?: "" else ""
+                    if (name.isNotBlank() && num.isNotBlank()) {
+                        results.add(DiscoveredContact(id, name, num))
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return results
     }
 }

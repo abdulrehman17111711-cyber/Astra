@@ -79,9 +79,14 @@ class WakeWordBackgroundService : Service() {
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var lowPowerDetector: LowPowerKeywordDetector? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isListening = false
     private var isDestroyed = false
+    private var volumeObserver: android.database.ContentObserver? = null
+    private var lastVolumeDecreaseTime = 0L
+    private var previousMediaVolume = -1
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -89,6 +94,55 @@ class WakeWordBackgroundService : Service() {
         super.onCreate()
         AstraLogger.i(TAG, "WakeWordBackgroundService created")
         createNotificationChannel()
+
+        // Acquire partial wake lock to allow background wake-word processing
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            wakeLock = powerManager?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "astra:wakeword_service_lock")?.apply {
+                setReferenceCounted(false)
+                acquire(30 * 60 * 1000L) // 30 mins
+            }
+        } catch (e: Exception) {
+            AstraLogger.w(TAG, "Could not acquire WakeLock: ${e.message}")
+        }
+
+        // Register hardware Volume Down double-press detector
+        registerVolumeObserver()
+    }
+
+    private fun registerVolumeObserver() {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+            if (audioManager != null) {
+                previousMediaVolume = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+            }
+            volumeObserver = object : android.database.ContentObserver(mainHandler) {
+                override fun onChange(selfChange: Boolean) {
+                    super.onChange(selfChange)
+                    val am = getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
+                    val currentVol = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                    if (currentVol < previousMediaVolume) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastVolumeDecreaseTime in 50..700) {
+                            lastVolumeDecreaseTime = 0L
+                            AstraLogger.i(TAG, "Double-press Volume Down detected via hardware VolumeObserver! Activating Astra...")
+                            triggerAssistantWakeup("")
+                        } else {
+                            lastVolumeDecreaseTime = now
+                        }
+                    }
+                    previousMediaVolume = currentVol
+                }
+            }
+            contentResolver.registerContentObserver(
+                android.provider.Settings.System.CONTENT_URI,
+                true,
+                volumeObserver!!
+            )
+            AstraLogger.i(TAG, "Volume ContentObserver active for hardware double-press wake")
+        } catch (e: Exception) {
+            AstraLogger.w(TAG, "Could not register volume observer: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -104,7 +158,16 @@ class WakeWordBackgroundService : Service() {
         startForegroundWithNotification()
         _isRunning.value = true
 
-        // Initialize and start SpeechRecognizer loop
+        // 1. Initialize and start low-power continuous keyword detector
+        lowPowerDetector = LowPowerKeywordDetector(this) {
+            mainHandler.post {
+                AstraLogger.i(TAG, "Wake word triggered via LowPowerKeywordDetector! Activating assistant...")
+                triggerAssistantWakeup("")
+            }
+        }
+        lowPowerDetector?.start()
+
+        // 2. Initialize and start SpeechRecognizer loop for high-accuracy speech verification
         mainHandler.post {
             initSpeechRecognizer()
             startListeningLoop()
@@ -213,11 +276,16 @@ class WakeWordBackgroundService : Service() {
         }
 
         try {
+            speechRecognizer?.cancel()
+        } catch (_: Exception) {}
+
+        try {
             speechRecognizer?.startListening(intent)
             isListening = true
             AstraLogger.d(TAG, "SpeechRecognizer listening for wake word...")
         } catch (e: Exception) {
             AstraLogger.e(TAG, "startListening error: ${e.message}")
+            initSpeechRecognizer()
             scheduleRestart(1000)
         }
     }
@@ -235,15 +303,15 @@ class WakeWordBackgroundService : Service() {
 
     private fun handleDetectedSpeech(transcript: String) {
         val lower = transcript.lowercase().trim()
-        val wakeRegex = Regex("(?i)\\b(hey astra|hello astra|ok astra|okay astra|astra|suno astra|ہائے ایسٹرا|ایسٹرا)\\b")
+        val wakeRegex = Regex("(?i)(?:\\b(hey astra|hello astra|ok astra|okay astra|astra|suno astra)\\b|ہائے\\s*ایسٹرا|ایسٹرا|ہائے\\s*اسٹرا|اسٹرا|ہائے\\s*آسٹرا|آسٹرا)")
 
-        if (wakeRegex.containsMatchIn(lower)) {
+        if (wakeRegex.containsMatchIn(lower) || wakeRegex.containsMatchIn(transcript)) {
             AstraLogger.i(TAG, "Wake word detected in background: \"$transcript\"")
             _lastDetectedWakePhrase.value = transcript
 
             // Strip the wake word prefix to extract any accompanying command
             val cleanQuery = transcript
-                .replace(Regex("(?i)^(hey astra|hello astra|ok astra|okay astra|astra|suno astra|ہائے ایسٹرا|ایسٹرا)\\s*[,:]?\\s*"), "")
+                .replace(Regex("(?i)^(?:hey astra|hello astra|ok astra|okay astra|astra|suno astra|ہائے\\s*ایسٹرا|ایسٹرا|ہائے\\s*اسٹرا|اسٹرا|ہائے\\s*آسٹرا|آسٹرا)\\s*[,:]?\\s*"), "")
                 .trim()
 
             // Trigger Assistant Wakeup
@@ -257,7 +325,10 @@ class WakeWordBackgroundService : Service() {
     private fun triggerAssistantWakeup(remainingQuery: String) {
         try {
             val intent = Intent(this, com.example.MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                 putExtra("EXTRA_AUTO_ACTIVATE_VOICE", true)
                 if (remainingQuery.isNotBlank()) {
                     putExtra("EXTRA_WAKE_QUERY", remainingQuery)
@@ -283,24 +354,35 @@ class WakeWordBackgroundService : Service() {
 
         override fun onError(error: Int) {
             AstraLogger.d(TAG, "SpeechRecognizer error: $error")
+            try {
+                speechRecognizer?.cancel()
+            } catch (_: Exception) {}
+
+            if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                error == SpeechRecognizer.ERROR_CLIENT ||
+                error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED
+            ) {
+                initSpeechRecognizer()
+            }
+
             // Error codes: 7 = ERROR_NO_MATCH, 6 = ERROR_SPEECH_TIMEOUT (normal continuous listening events)
             val delay = when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH,
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 250L
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 600L
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 500L
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                     stopSelf()
                     return
                 }
-                else -> 1000L
+                else -> 800L
             }
             scheduleRestart(delay)
         }
 
         override fun onResults(results: Bundle?) {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-            if (!matches.isNullOrEmpty()) {
-                val best = matches.first()
+            val best = VoicePhoneticCorrector.selectBestTranscript(matches, contentResolver)
+            if (best.isNotBlank()) {
                 AstraLogger.d(TAG, "SpeechRecognizer final result: $best")
                 handleDetectedSpeech(best)
             } else {
@@ -325,6 +407,16 @@ class WakeWordBackgroundService : Service() {
         isDestroyed = true
         _isRunning.value = false
         mainHandler.removeCallbacksAndMessages(null)
+        volumeObserver?.let {
+            try { contentResolver.unregisterContentObserver(it) } catch (_: Exception) {}
+            volumeObserver = null
+        }
+        wakeLock?.let {
+            try { if (it.isHeld) it.release() } catch (_: Exception) {}
+            wakeLock = null
+        }
+        lowPowerDetector?.stop()
+        lowPowerDetector = null
         try {
             speechRecognizer?.destroy()
             speechRecognizer = null

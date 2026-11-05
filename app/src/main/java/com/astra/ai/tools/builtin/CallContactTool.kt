@@ -3,6 +3,8 @@ package com.astra.ai.tools.builtin
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.astra.ai.telephony.AndroidTelephonyService
+import com.astra.ai.telephony.TelephonyService
 import com.astra.ai.tools.Tool
 import com.astra.ai.tools.ToolExecutionResult
 import com.astra.ai.tools.ToolParamType
@@ -14,7 +16,8 @@ import com.astra.ai.tools.ToolParameter
  * Requires user confirmation before execution.
  */
 class CallContactTool(
-    private val context: Context
+    private val context: Context,
+    private val telephonyService: TelephonyService = AndroidTelephonyService(context)
 ) : Tool {
 
     override val name: String = "call_contact"
@@ -44,7 +47,7 @@ class CallContactTool(
         if (contact.isBlank()) {
             return ToolExecutionResult.failure("Contact name or phone number is required.")
         }
-        val delegate = CallTool(context)
+        val delegate = CallTool(context, telephonyService)
         val callParams = mutableMapOf<String, Any?>("contactOrNumber" to contact)
         params["simPreference"]?.let { callParams["simPreference"] = it }
         params["sim"]?.let { callParams["simPreference"] = it }

@@ -104,21 +104,17 @@ class WakeActivationManager(private val context: Context) {
         val clean = transcript.trim().lowercase()
         val wake = _config.value.wakePhrase.trim().lowercase()
 
-        return clean.startsWith(wake) || clean.contains(wake) || clean.startsWith("astra")
+        return clean.startsWith(wake) || clean.contains(wake) || clean.startsWith("astra") ||
+                clean.contains("ایسٹرا") || clean.contains("اسٹرا") || clean.contains("آسٹرا")
     }
 
     /**
      * Strips wake phrase from user command.
      */
     fun stripWakePhrase(transcript: String): String {
-        val clean = transcript.trim()
-        val wake = _config.value.wakePhrase.trim()
-
-        return when {
-            clean.startsWith(wake, ignoreCase = true) -> clean.substring(wake.length).trim()
-            clean.startsWith("astra", ignoreCase = true) -> clean.substring(5).trim()
-            else -> clean
-        }
+        return transcript
+            .replace(Regex("(?i)^(?:hey astra|hello astra|ok astra|okay astra|astra|suno astra|ہائے\\s*ایسٹرا|ایسٹرا|ہائے\\s*اسٹرا|اسٹرا|ہائے\\s*آسٹرا|آسٹرا)\\s*[,:]?\\s*"), "")
+            .trim()
     }
 
     /**

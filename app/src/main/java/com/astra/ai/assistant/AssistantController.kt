@@ -207,7 +207,8 @@ class AssistantController(
      * Processes a user query (from voice recognition or keyboard input).
      */
     fun processQuery(query: String) {
-        val trimmed = query.trim()
+        val normalized = com.astra.ai.voice.VoicePhoneticCorrector.applyPhoneticRules(query.trim())
+        val trimmed = normalized.ifBlank { query.trim() }
         if (trimmed.isEmpty()) return
 
         listeningWatchdogJob?.cancel()

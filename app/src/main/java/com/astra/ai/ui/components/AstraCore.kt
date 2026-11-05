@@ -26,7 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
@@ -37,19 +37,33 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.astra.ai.assistant.AssistantState
 import com.astra.ai.assistant.AssistantStateType
-import com.astra.ai.ui.theme.AstraAmber
-import com.astra.ai.ui.theme.AstraCyan
-import com.astra.ai.ui.theme.AstraEmerald
-import com.astra.ai.ui.theme.AstraMagenta
-import com.astra.ai.ui.theme.AstraRed
-import com.astra.ai.ui.theme.AstraViolet
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * The Central "Astra Core" - A futuristic, voice-first intelligent assistant sphere.
- * Incorporates layered radial gradients, multiple glowing rings, state-dependent particle
- * movement, breathing animations, and acoustic soundwaves.
+ * Data model for dynamic glittering particles that twinkle and drift
+ * around the fluid holographic nebula.
+ */
+private data class GlitterParticle(
+    val baseAngle: Float,
+    val distanceFactor: Float,
+    val size: Float,
+    val speedMultiplier: Float,
+    val colorIndex: Int,
+    val twinkleOffset: Float
+)
+
+/**
+ * The Central "Astra Core" - Inspired by Tecno's flagship Ella Assistant.
+ *
+ * Replaces simple spinning circles with a vibrant, glittering, multi-color
+ * holographic fluid morphing nebula:
+ * - Multi-color iridescent aurora gradients (Neon Cyan, Electric Purple, Sunset Magenta, Solar Gold).
+ * - Organic, sinusoidal liquid contour that morphs organically and reacts to voice amplitude.
+ * - 32 drifting glittering starry sparkles that twinkle with fluid particle physics.
+ * - Pulsing acoustic aura rings that expand smoothly during speech and listening.
+ * - Specular crystalline glass iris highlight.
  */
 @Composable
 fun AstraCore(
@@ -58,88 +72,111 @@ fun AstraCore(
     modifier: Modifier = Modifier,
     size: Dp = 260.dp
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "AstraCoreInfinite")
+    val infiniteTransition = rememberInfiniteTransition(label = "TecnoEllaCoreTransition")
 
-    // Slow organic breathing animation
-    val breathingScale by infiniteTransition.animateFloat(
-        initialValue = 0.94f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "BreathingScale"
-    )
-
-    // Fast rotation for thinking / executing energy
-    val continuousRotation by infiniteTransition.animateFloat(
+    // Fluid liquid contour morphing phases
+    val fluidPhase1 by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 360f,
+        targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 5000, easing = LinearEasing),
+            animation = tween(durationMillis = 4800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "CoreRotation"
+        label = "FluidMorphPhase1"
     )
 
-    // Acoustic wave oscillation for speaking / listening
-    val acousticPulse by infiniteTransition.animateFloat(
+    val fluidPhase2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -(2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 7200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "FluidMorphPhase2"
+    )
+
+    // Breathing pulse
+    val breathingPulse by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "BreathingPulse"
+    )
+
+    // Glitter twinkle cycle
+    val glitterTwinkle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            animation = tween(durationMillis = 1800, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "AcousticPulse"
+        label = "GlitterTwinkle"
     )
 
-    // Target colors based on state
-    val targetPrimaryColor = when (state.type) {
-        AssistantStateType.IDLE -> AstraCyan
-        AssistantStateType.ACTIVATING -> AstraCyan
-        AssistantStateType.LISTENING -> AstraCyan
-        AssistantStateType.PROCESSING -> AstraViolet
-        AssistantStateType.THINKING -> AstraViolet
-        AssistantStateType.EXECUTING -> AstraMagenta
-        AssistantStateType.SPEAKING -> AstraEmerald
-        AssistantStateType.WAITING_FOR_CONFIRMATION -> AstraAmber
-        AssistantStateType.SUCCESS -> AstraEmerald
-        AssistantStateType.ERROR -> AstraRed
+    // Acoustic wave expansion for voice reactivity
+    val acousticWaveProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "AcousticWave"
+    )
+
+    // Core dynamic palette inspired by Tecno Ella
+    val cyanGlow = Color(0xFF00F5FF)
+    val purpleGlow = Color(0xFF9D00FF)
+    val magentaGlow = Color(0xFFFF007F)
+    val goldGlow = Color(0xFFFFD700)
+    val emeraldGlow = Color(0xFF00FFA3)
+    val coralRed = Color(0xFFFF3366)
+
+    val (primaryColor, secondaryColor, accentColor) = when (state.type) {
+        AssistantStateType.IDLE -> Triple(cyanGlow, purpleGlow, magentaGlow)
+        AssistantStateType.ACTIVATING -> Triple(cyanGlow, magentaGlow, goldGlow)
+        AssistantStateType.LISTENING -> Triple(cyanGlow, emeraldGlow, magentaGlow)
+        AssistantStateType.PROCESSING -> Triple(purpleGlow, magentaGlow, cyanGlow)
+        AssistantStateType.THINKING -> Triple(purpleGlow, goldGlow, magentaGlow)
+        AssistantStateType.EXECUTING -> Triple(magentaGlow, goldGlow, cyanGlow)
+        AssistantStateType.SPEAKING -> Triple(emeraldGlow, cyanGlow, goldGlow)
+        AssistantStateType.WAITING_FOR_CONFIRMATION -> Triple(goldGlow, magentaGlow, Color.White)
+        AssistantStateType.SUCCESS -> Triple(emeraldGlow, cyanGlow, Color.White)
+        AssistantStateType.ERROR -> Triple(coralRed, goldGlow, magentaGlow)
     }
 
-    val targetSecondaryColor = when (state.type) {
-        AssistantStateType.IDLE -> AstraViolet
-        AssistantStateType.ACTIVATING -> Color.White
-        AssistantStateType.LISTENING -> Color.White
-        AssistantStateType.PROCESSING -> AstraMagenta
-        AssistantStateType.THINKING -> AstraMagenta
-        AssistantStateType.EXECUTING -> AstraAmber
-        AssistantStateType.SPEAKING -> AstraCyan
-        AssistantStateType.WAITING_FOR_CONFIRMATION -> Color.White
-        AssistantStateType.SUCCESS -> Color.White
-        AssistantStateType.ERROR -> AstraAmber
+    val animatedPrimary by animateColorAsState(primaryColor, tween(400), label = "Primary")
+    val animatedSecondary by animateColorAsState(secondaryColor, tween(400), label = "Secondary")
+    val animatedAccent by animateColorAsState(accentColor, tween(400), label = "Accent")
+
+    // Audio boost reacting to user or TTS speech
+    val audioLevel = when (state) {
+        is AssistantState.Listening -> state.audioLevel
+        is AssistantState.Speaking -> 0.65f
+        else -> 0f
     }
-
-    // Smooth state color transitions
-    val primaryColor by animateColorAsState(
-        targetValue = targetPrimaryColor,
-        animationSpec = tween(durationMillis = 400),
-        label = "PrimaryColor"
-    )
-
-    val secondaryColor by animateColorAsState(
-        targetValue = targetSecondaryColor,
-        animationSpec = tween(durationMillis = 400),
-        label = "SecondaryColor"
-    )
-
-    // Dynamic scale boost based on audio level in listening mode
-    val audioLevel = if (state is AssistantState.Listening) state.audioLevel else 0f
-    val dynamicAudioBoost by animateFloatAsState(
-        targetValue = audioLevel * 0.35f,
+    val animatedAudioBoost by animateFloatAsState(
+        targetValue = audioLevel * 0.4f,
         animationSpec = spring(),
         label = "AudioBoost"
     )
+
+    // 32 deterministic glittering particles
+    val particles = remember {
+        List(32) { index ->
+            val angle = (index * (360f / 32f) * (PI / 180f)).toFloat()
+            val dist = 1.15f + (index % 5) * 0.12f
+            val pSize = 1.8f + (index % 4) * 1.2f
+            val speed = 0.6f + (index % 3) * 0.4f
+            val colorIdx = index % 4
+            val offset = (index * 0.23f) % 1.0f
+            GlitterParticle(angle, dist, pSize, speed, colorIdx, offset)
+        }
+    }
 
     val interactionSource = remember { MutableInteractionSource() }
 
@@ -148,7 +185,7 @@ fun AstraCore(
             .size(size)
             .clip(CircleShape)
             .semantics {
-                contentDescription = "Astra Core: State ${state.type.name}. Tap to interact."
+                contentDescription = "Astra AI Core: ${state.type.name}. Tap to talk."
                 role = Role.Button
             }
             .clickable(
@@ -160,400 +197,263 @@ fun AstraCore(
     ) {
         Canvas(modifier = Modifier.size(size)) {
             val center = Offset(this.size.width / 2f, this.size.height / 2f)
-            val baseRadius = this.size.minDimension / 3.4f
-            val currentScale = (breathingScale + dynamicAudioBoost).coerceIn(0.85f, 1.45f)
-            val coreRadius = baseRadius * currentScale
+            val baseRadius = (this.size.minDimension / 3.2f) * (breathingPulse + animatedAudioBoost)
 
-            // 1. Layered Outermost Ambient Atmospheric Glow
+            // 1. Outermost Multi-Color Aurora Atmospheric Glow
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        primaryColor.copy(alpha = 0.35f),
-                        secondaryColor.copy(alpha = 0.12f),
+                        animatedPrimary.copy(alpha = 0.42f),
+                        animatedSecondary.copy(alpha = 0.28f),
+                        animatedAccent.copy(alpha = 0.12f),
                         Color.Transparent
                     ),
                     center = center,
-                    radius = coreRadius * 2.2f
+                    radius = baseRadius * 2.1f
                 ),
-                radius = coreRadius * 2.2f,
+                radius = baseRadius * 2.1f,
                 center = center
             )
 
-            // 2. State-dependent outer elements
-            when (state.type) {
-                AssistantStateType.ACTIVATING -> {
-                    drawListeningSoundRings(
-                        center = center,
-                        coreRadius = coreRadius * 0.95f,
-                        pulseProgress = acousticPulse,
-                        primaryColor = primaryColor,
-                        audioLevel = 0.25f
-                    )
-                }
-
-                AssistantStateType.LISTENING -> {
-                    drawListeningSoundRings(
-                        center = center,
-                        coreRadius = coreRadius,
-                        pulseProgress = acousticPulse,
-                        primaryColor = primaryColor,
-                        audioLevel = audioLevel
-                    )
-                }
-
-                AssistantStateType.PROCESSING -> {
-                    drawThinkingEnergyVortex(
-                        center = center,
-                        coreRadius = coreRadius,
-                        rotation = continuousRotation * 1.2f,
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor
-                    )
-                }
-
-                AssistantStateType.THINKING -> {
-                    drawThinkingEnergyVortex(
-                        center = center,
-                        coreRadius = coreRadius,
-                        rotation = continuousRotation,
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor
-                    )
-                }
-
-                AssistantStateType.EXECUTING -> {
-                    drawExecutingActionRings(
-                        center = center,
-                        coreRadius = coreRadius,
-                        rotation = continuousRotation,
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor
-                    )
-                }
-
-                AssistantStateType.SPEAKING -> {
-                    drawSpeakingAcousticWaves(
-                        center = center,
-                        coreRadius = coreRadius,
-                        pulseProgress = acousticPulse,
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor
-                    )
-                }
-
-                AssistantStateType.WAITING_FOR_CONFIRMATION -> {
-                    drawConfirmationBeacon(
-                        center = center,
-                        coreRadius = coreRadius,
-                        rotation = continuousRotation * 0.5f,
-                        color = primaryColor
-                    )
-                }
-
-                AssistantStateType.SUCCESS -> {
-                    drawSuccessBloom(
-                        center = center,
-                        coreRadius = coreRadius,
-                        color = primaryColor
-                    )
-                }
-
-                AssistantStateType.ERROR -> {
-                    drawErrorHalo(
-                        center = center,
-                        coreRadius = coreRadius,
-                        pulseProgress = acousticPulse,
-                        color = primaryColor
-                    )
-                }
-
-                AssistantStateType.IDLE -> {
-                    drawIdleOrbitalRings(
-                        center = center,
-                        coreRadius = coreRadius,
-                        rotation = continuousRotation * 0.4f,
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor
-                    )
-                }
+            // 2. Sound-Reactive Expanding Acoustic Aurora Ripples
+            if (state is AssistantState.Listening || state is AssistantState.Speaking || state is AssistantState.Activating) {
+                drawAcousticAuraRipples(
+                    center = center,
+                    baseRadius = baseRadius,
+                    progress = acousticWaveProgress,
+                    primary = animatedPrimary,
+                    secondary = animatedAccent,
+                    audioLevel = audioLevel
+                )
             }
 
-            // 3. Middle Resonant Ring (Glass-like border glow)
-            drawCircle(
-                color = primaryColor.copy(alpha = 0.45f),
-                radius = coreRadius * 1.15f,
+            // 3. Glittering Starry Particles that Twinkle and Orbit
+            drawGlitterParticles(
                 center = center,
-                style = Stroke(width = 2.dp.toPx())
+                baseRadius = baseRadius,
+                particles = particles,
+                twinkleProgress = glitterTwinkle,
+                phase = fluidPhase1,
+                primary = animatedPrimary,
+                secondary = animatedSecondary,
+                accent = animatedAccent,
+                gold = goldGlow
             )
 
-            // 4. Primary Core Glowing Sphere
+            // 4. Fluid Organic Liquid Waveform Core (Morphing Sinusoidal Blob)
+            drawFluidNebulaBlob(
+                center = center,
+                baseRadius = baseRadius,
+                phase1 = fluidPhase1,
+                phase2 = fluidPhase2,
+                audioBoost = animatedAudioBoost,
+                primary = animatedPrimary,
+                secondary = animatedSecondary,
+                accent = animatedAccent
+            )
+
+            // 5. Secondary Iridescent Chromatic Border
+            drawFluidNebulaBorder(
+                center = center,
+                baseRadius = baseRadius * 1.02f,
+                phase1 = fluidPhase1 * 1.2f,
+                phase2 = fluidPhase2 * 0.8f,
+                audioBoost = animatedAudioBoost,
+                primary = animatedPrimary,
+                accent = animatedAccent
+            )
+
+            // 6. Crystalline Holographic Specular Iris Highlight
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.95f),
-                        primaryColor,
-                        secondaryColor.copy(alpha = 0.85f),
-                        primaryColor.copy(alpha = 0.4f)
-                    ),
-                    center = Offset(center.x - coreRadius * 0.15f, center.y - coreRadius * 0.15f),
-                    radius = coreRadius
-                ),
-                radius = coreRadius,
-                center = center
-            )
-
-            // 5. Specular Holographic Lens Highlight
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.65f),
+                        Color.White.copy(alpha = 0.85f),
+                        animatedPrimary.copy(alpha = 0.35f),
                         Color.Transparent
                     ),
-                    center = Offset(center.x - coreRadius * 0.35f, center.y - coreRadius * 0.35f),
-                    radius = coreRadius * 0.45f
+                    center = Offset(center.x - baseRadius * 0.32f, center.y - baseRadius * 0.32f),
+                    radius = baseRadius * 0.5f
                 ),
-                radius = coreRadius * 0.45f,
-                center = Offset(center.x - coreRadius * 0.35f, center.y - coreRadius * 0.35f)
+                radius = baseRadius * 0.5f,
+                center = Offset(center.x - baseRadius * 0.32f, center.y - baseRadius * 0.32f)
             )
 
-            // 6. Subtle Orbiting Micro-Energy Satellites (3 particles around core)
-            drawOrbitingSatellites(
-                center = center,
-                coreRadius = coreRadius,
-                rotation = continuousRotation,
-                color = primaryColor
+            // 7. Center Quantum Glow Spark
+            drawCircle(
+                color = Color.White.copy(alpha = 0.95f),
+                radius = 3.5.dp.toPx(),
+                center = Offset(center.x - baseRadius * 0.28f, center.y - baseRadius * 0.28f)
             )
         }
     }
 }
 
-private fun DrawScope.drawIdleOrbitalRings(
+/**
+ * Draws the morphing, organic liquid nebula blob using parametric polar coordinates.
+ * Gives the assistant a fluid, alive, liquid-light appearance rather than a rigid circle.
+ */
+private fun DrawScope.drawFluidNebulaBlob(
     center: Offset,
-    coreRadius: Float,
-    rotation: Float,
-    primaryColor: Color,
-    secondaryColor: Color
+    baseRadius: Float,
+    phase1: Float,
+    phase2: Float,
+    audioBoost: Float,
+    primary: Color,
+    secondary: Color,
+    accent: Color
 ) {
-    val ringRadius = coreRadius * 1.35f
-    drawCircle(
-        brush = Brush.sweepGradient(
-            colors = listOf(
-                primaryColor.copy(alpha = 0.7f),
-                Color.Transparent,
-                secondaryColor.copy(alpha = 0.5f),
-                Color.Transparent,
-                primaryColor.copy(alpha = 0.7f)
-            ),
-            center = center
-        ),
-        radius = ringRadius,
-        center = center,
-        style = Stroke(
-            width = 2.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(20f, 20f), rotation)
-        )
-    )
-}
+    val path = Path()
+    val steps = 64
+    val stepAngle = (2 * PI / steps).toFloat()
 
-private fun DrawScope.drawListeningSoundRings(
-    center: Offset,
-    coreRadius: Float,
-    pulseProgress: Float,
-    primaryColor: Color,
-    audioLevel: Float
-) {
-    // 3 expanding concentric acoustic waves
-    for (i in 0..2) {
-        val waveProg = (pulseProgress + i * 0.33f) % 1.0f
-        val radius = coreRadius * (1.15f + waveProg * (0.8f + audioLevel))
-        val alpha = ((1.0f - waveProg) * 0.6f).coerceIn(0f, 1f)
+    for (i in 0..steps) {
+        val theta = i * stepAngle
+        // Harmonic sinusoidal liquid deformation
+        val deformation = 0.07f * sin(3 * theta + phase1) +
+                0.04f * cos(5 * theta - phase2) +
+                audioBoost * 0.35f * sin(2 * theta + phase1 * 1.5f)
+        val r = baseRadius * (1f + deformation)
+        val x = center.x + r * cos(theta)
+        val y = center.y + r * sin(theta)
 
-        drawCircle(
-            color = primaryColor.copy(alpha = alpha),
-            radius = radius,
-            center = center,
-            style = Stroke(width = (2.5f - waveProg * 1.5f).dp.toPx())
-        )
+        if (i == 0) {
+            path.moveTo(x, y)
+        } else {
+            path.lineTo(x, y)
+        }
     }
-}
+    path.close()
 
-private fun DrawScope.drawThinkingEnergyVortex(
-    center: Offset,
-    coreRadius: Float,
-    rotation: Float,
-    primaryColor: Color,
-    secondaryColor: Color
-) {
-    // Fast clockwise energy ring
-    drawCircle(
-        brush = Brush.sweepGradient(
-            colors = listOf(
-                primaryColor,
-                secondaryColor,
-                Color.Transparent,
-                primaryColor
-            ),
-            center = center
-        ),
-        radius = coreRadius * 1.35f,
-        center = center,
-        style = Stroke(
-            width = 3.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(30f, 15f), rotation * 2f)
-        )
-    )
-
-    // Counter-clockwise outer energy strand
-    drawCircle(
-        brush = Brush.sweepGradient(
-            colors = listOf(
-                secondaryColor,
-                Color.Transparent,
-                primaryColor,
-                secondaryColor
-            ),
-            center = center
-        ),
-        radius = coreRadius * 1.55f,
-        center = center,
-        style = Stroke(
-            width = 2.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 24f), -rotation * 1.5f)
-        )
-    )
-}
-
-private fun DrawScope.drawExecutingActionRings(
-    center: Offset,
-    coreRadius: Float,
-    rotation: Float,
-    primaryColor: Color,
-    secondaryColor: Color
-) {
-    // Geared progress action ring
-    drawCircle(
-        color = primaryColor.copy(alpha = 0.7f),
-        radius = coreRadius * 1.3f,
-        center = center,
-        style = Stroke(
-            width = 4.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), rotation * 1.2f)
-        )
-    )
-
-    // Outer orbital scanner arc
-    drawCircle(
-        color = secondaryColor.copy(alpha = 0.5f),
-        radius = coreRadius * 1.5f,
-        center = center,
-        style = Stroke(
-            width = 2.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(50f, 60f), -rotation * 0.8f)
-        )
-    )
-}
-
-private fun DrawScope.drawSpeakingAcousticWaves(
-    center: Offset,
-    coreRadius: Float,
-    pulseProgress: Float,
-    primaryColor: Color,
-    secondaryColor: Color
-) {
-    for (i in 0..2) {
-        val waveProg = (pulseProgress + i * 0.33f) % 1.0f
-        val radius = coreRadius * (1.2f + waveProg * 0.65f)
-        val alpha = ((1.0f - waveProg) * 0.55f).coerceIn(0f, 1f)
-
-        drawCircle(
-            color = if (i % 2 == 0) primaryColor.copy(alpha = alpha) else secondaryColor.copy(alpha = alpha),
-            radius = radius,
-            center = center,
-            style = Stroke(width = 3.dp.toPx())
-        )
-    }
-}
-
-private fun DrawScope.drawConfirmationBeacon(
-    center: Offset,
-    coreRadius: Float,
-    rotation: Float,
-    color: Color
-) {
-    // Pulsing diamond / caution beacon perimeter
-    drawCircle(
-        color = color.copy(alpha = 0.7f),
-        radius = coreRadius * 1.35f,
-        center = center,
-        style = Stroke(
-            width = 3.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(40f, 20f), rotation)
-        )
-    )
-}
-
-private fun DrawScope.drawSuccessBloom(
-    center: Offset,
-    coreRadius: Float,
-    color: Color
-) {
-    // Radiant emerald bloom ring
-    drawCircle(
+    drawPath(
+        path = path,
         brush = Brush.radialGradient(
             colors = listOf(
-                color.copy(alpha = 0.4f),
-                Color.Transparent
+                Color.White.copy(alpha = 0.96f),
+                primary.copy(alpha = 0.90f),
+                secondary.copy(alpha = 0.85f),
+                accent.copy(alpha = 0.65f),
+                Color(0xFF05081A)
             ),
-            center = center,
-            radius = coreRadius * 1.8f
+            center = Offset(center.x - baseRadius * 0.15f, center.y - baseRadius * 0.15f),
+            radius = baseRadius * 1.15f
+        )
+    )
+}
+
+/**
+ * Draws the chromatic iridescent fluid outer edge.
+ */
+private fun DrawScope.drawFluidNebulaBorder(
+    center: Offset,
+    baseRadius: Float,
+    phase1: Float,
+    phase2: Float,
+    audioBoost: Float,
+    primary: Color,
+    accent: Color
+) {
+    val path = Path()
+    val steps = 64
+    val stepAngle = (2 * PI / steps).toFloat()
+
+    for (i in 0..steps) {
+        val theta = i * stepAngle
+        val deformation = 0.08f * sin(3 * theta + phase1) +
+                0.05f * cos(4 * theta + phase2) +
+                audioBoost * 0.35f * sin(2 * theta + phase1)
+        val r = baseRadius * (1f + deformation)
+        val x = center.x + r * cos(theta)
+        val y = center.y + r * sin(theta)
+
+        if (i == 0) {
+            path.moveTo(x, y)
+        } else {
+            path.lineTo(x, y)
+        }
+    }
+    path.close()
+
+    drawPath(
+        path = path,
+        brush = Brush.sweepGradient(
+            colors = listOf(
+                primary.copy(alpha = 0.85f),
+                Color.White.copy(alpha = 0.9f),
+                accent.copy(alpha = 0.75f),
+                Color(0xFFFFD700).copy(alpha = 0.8f),
+                primary.copy(alpha = 0.85f)
+            ),
+            center = center
         ),
-        radius = coreRadius * 1.8f,
-        center = center
+        style = Stroke(width = 2.5.dp.toPx())
     )
 }
 
-private fun DrawScope.drawErrorHalo(
+/**
+ * Draws expanding acoustic aurora ripples during speech and voice capture.
+ */
+private fun DrawScope.drawAcousticAuraRipples(
     center: Offset,
-    coreRadius: Float,
-    pulseProgress: Float,
-    color: Color
+    baseRadius: Float,
+    progress: Float,
+    primary: Color,
+    secondary: Color,
+    audioLevel: Float
 ) {
-    val radius = coreRadius * (1.25f + pulseProgress * 0.3f)
-    drawCircle(
-        color = color.copy(alpha = (1.0f - pulseProgress) * 0.7f),
-        radius = radius,
-        center = center,
-        style = Stroke(width = 3.dp.toPx())
-    )
-}
-
-private fun DrawScope.drawOrbitingSatellites(
-    center: Offset,
-    coreRadius: Float,
-    rotation: Float,
-    color: Color
-) {
-    val angles = listOf(
-        Math.toRadians(rotation.toDouble()),
-        Math.toRadians((rotation + 120f).toDouble()),
-        Math.toRadians((rotation + 240f).toDouble())
-    )
-
-    angles.forEachIndexed { index, rad ->
-        val orbitDist = coreRadius * (1.28f + index * 0.08f)
-        val px = center.x + (orbitDist * cos(rad)).toFloat()
-        val py = center.y + (orbitDist * sin(rad)).toFloat()
+    for (i in 0..2) {
+        val p = (progress + i * 0.33f) % 1.0f
+        val rippleRadius = baseRadius * (1.1f + p * (0.85f + audioLevel * 0.5f))
+        val alpha = ((1.0f - p) * 0.55f).coerceIn(0f, 1f)
+        val strokeColor = if (i % 2 == 0) primary else secondary
 
         drawCircle(
-            color = Color.White.copy(alpha = 0.9f),
-            radius = 2.5.dp.toPx(),
+            color = strokeColor.copy(alpha = alpha),
+            radius = rippleRadius,
+            center = center,
+            style = Stroke(width = (3.dp.toPx() * (1f - p * 0.6f)).coerceAtLeast(1f))
+        )
+    }
+}
+
+/**
+ * Draws 32 drifting, twinkling starry glitter particles around the core.
+ */
+private fun DrawScope.drawGlitterParticles(
+    center: Offset,
+    baseRadius: Float,
+    particles: List<GlitterParticle>,
+    twinkleProgress: Float,
+    phase: Float,
+    primary: Color,
+    secondary: Color,
+    accent: Color,
+    gold: Color
+) {
+    val palette = listOf(primary, secondary, accent, gold)
+
+    particles.forEach { p ->
+        // Drift angle with speed
+        val currentAngle = p.baseAngle + (phase * p.speedMultiplier * 0.3f)
+        val dist = baseRadius * (p.distanceFactor + 0.05f * sin(phase * 2f + p.twinkleOffset * 10f))
+        val px = center.x + dist * cos(currentAngle)
+        val py = center.y + dist * sin(currentAngle)
+
+        // Shimmer / Twinkle intensity
+        val twinkle = ((sin((twinkleProgress + p.twinkleOffset) * 2 * PI) + 1f) / 2f).toFloat()
+        val particleAlpha = (0.25f + twinkle * 0.75f).coerceIn(0f, 1f)
+        val color = palette[p.colorIndex % palette.size]
+
+        // Sparkle core
+        drawCircle(
+            color = Color.White.copy(alpha = particleAlpha),
+            radius = (p.size * (0.7f + twinkle * 0.5f)).dp.toPx(),
             center = Offset(px, py)
         )
 
-        // Subtle glow around satellite
+        // Outer glitter halo
         drawCircle(
-            color = color.copy(alpha = 0.45f),
-            radius = 6.dp.toPx(),
+            color = color.copy(alpha = particleAlpha * 0.45f),
+            radius = (p.size * 2.8f).dp.toPx(),
             center = Offset(px, py)
         )
     }

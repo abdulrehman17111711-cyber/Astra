@@ -28,7 +28,8 @@ data class AstraSettings(
     val subscriptionTier: String = "Astra Pro",
     val subscriptionActive: Boolean = true,
     val developerName: String = AstraConstants.CREATOR_NAME,
-    val appVersion: String = AstraConstants.APP_VERSION
+    val appVersion: String = AstraConstants.APP_VERSION,
+    val customContacts: Map<String, String> = emptyMap()
 )
 
 interface SettingsRepository {
@@ -49,6 +50,8 @@ interface SettingsRepository {
     fun setVoiceMatchEnabled(enabled: Boolean)
     fun setVoicePasscode(passcode: String)
     fun setVolumeButtonActivation(enabled: Boolean)
+    fun setCustomContact(name: String, number: String)
+    fun removeCustomContact(name: String)
 }
 
 class DefaultSettingsRepository : SettingsRepository {
@@ -117,5 +120,17 @@ class DefaultSettingsRepository : SettingsRepository {
 
     override fun setVolumeButtonActivation(enabled: Boolean) {
         _settings.value = _settings.value.copy(volumeButtonActivationEnabled = enabled)
+    }
+
+    override fun setCustomContact(name: String, number: String) {
+        val updated = _settings.value.customContacts.toMutableMap()
+        updated[name.trim()] = number.trim()
+        _settings.value = _settings.value.copy(customContacts = updated)
+    }
+
+    override fun removeCustomContact(name: String) {
+        val updated = _settings.value.customContacts.toMutableMap()
+        updated.remove(name.trim())
+        _settings.value = _settings.value.copy(customContacts = updated)
     }
 }

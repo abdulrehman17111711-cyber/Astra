@@ -68,7 +68,9 @@ class SendMessageTool(
                 intent.setPackage(packageToUse)
             }
 
-            if (intent.resolveActivity(context.packageManager) != null) {
+            val canResolveSpecific = intent.resolveActivity(context.packageManager) != null
+
+            if (canResolveSpecific) {
                 context.startActivity(intent)
 
                 // Trigger automated send click via Accessibility if active
@@ -99,7 +101,27 @@ class SendMessageTool(
                     executionTimeMs = System.currentTimeMillis() - startTime
                 )
             } else {
-                ToolExecutionResult.failure("No compatible messaging app found on device for $app.")
+                // Fallback to generic system share intent
+                val genericIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, message)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                if (genericIntent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(genericIntent)
+                    ToolExecutionResult.success(
+                        displayText = "Prepared message for $recipient via system messaging: \"$message\"",
+                        output = mapOf(
+                            "recipient" to recipient,
+                            "message" to message,
+                            "app" to app,
+                            "automated" to false
+                        ),
+                        executionTimeMs = System.currentTimeMillis() - startTime
+                    )
+                } else {
+                    ToolExecutionResult.failure("No compatible messaging app found on device for $app.")
+                }
             }
         } catch (e: Exception) {
             ToolExecutionResult.failure("Failed to send message: ${e.message}")

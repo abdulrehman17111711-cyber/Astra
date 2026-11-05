@@ -715,22 +715,54 @@ class UniversalSemanticIntentEngine(
         val sim = if (isSim2) "SIM 2" else if (isSim1) "SIM 1" else "Default SIM"
 
         var contact = cleanQuery
-        val wordsToRemove = listOf(
-            "سم 1 سے", "سم 2 سے", "سم 1", "سم 2", "سم ون سے", "سم ٹو سے", "سم ون", "سم ٹو", "دوسری سم سے", "پہلی سم سے",
-            "from sim 1", "from sim 2", "via sim 1", "via sim 2", "sim 1 se", "sim 2 se", "sim 1", "sim 2",
-            "ko call karo", "ko call kar do", "ko call karna", "ko call lagao", "ko call",
-            "call karo", "call kar do", "call karna", "call lagao", "call kar", "call to", "call",
-            "phone milao", "phone karo", "dial karo", "dial", "please",
-            "کو کال کرو", "کو کال کر دو", "کو کال ملا دو", "کو کال ملاؤ", "کو کال",
-            "کال کرو", "کال کر دو", "کال ملا دو", "کال ملاؤ", "کال",
-            "فون ملاؤ", "فون کرو", "فون ملا دو",
-            "میرے بھائی", "میرا بھائی", "بھائی", "mera bhai", "meri behan", "mere bhai", "brother", "bhai",
-            "ko", "se", "کو", "سے"
+
+        // 1. Remove composite phrases first (longest phrases first)
+        val phrasePatterns = listOf(
+            "(?i)from\\s+sim\\s+[12]",
+            "(?i)via\\s+sim\\s+[12]",
+            "(?i)sim\\s+[12]\\s+se",
+            "(?i)sim\\s+[12]",
+            "سم\\s*[12]\\s*سے",
+            "سم\\s*ٹو\\s*سے",
+            "سم\\s*ون\\s*سے",
+            "دوسری\\s*سم\\s*سے",
+            "پہلی\\s*سم\\s*سے",
+            "سم\\s*[12]",
+            "سم\\s*ٹو",
+            "سم\\s*ون",
+            "(?i)ko\\s+call\\s+(?:karo|kar\\s+do|karna|lagao|kar)",
+            "(?i)call\\s+(?:karo|kar\\s+do|karna|lagao|kar)",
+            "(?i)phone\\s+(?:milao|karo|lagao)",
+            "(?i)dial\\s+karo",
+            "کو\\s+کال\\s+(?:کرو|کر\\s+دو|ملا\\s+دو|ملاؤ|کرنا|کیجیے)",
+            "کال\\s+(?:کرو|کر\\s+دو|ملا\\s+دو|ملاؤ|کرنا|کیجیے)",
+            "فون\\s+(?:ملاؤ|کرو|ملا\\s+دو|لگاؤ)",
+            "(?i)^call\\s+",
+            "(?i)^dial\\s+",
+            "^کال\\s+کرو\\s+",
+            "^فون\\s+ملاؤ\\s+"
         )
-        for (w in wordsToRemove) {
-            contact = contact.replace(Regex("(?i)\\b${Regex.escape(w)}\\b"), " ")
-            contact = contact.replace(w, " ")
+
+        for (pattern in phrasePatterns) {
+            contact = contact.replace(Regex(pattern), " ")
         }
+
+        // 2. Remove standalone postpositions and connectors strictly with word/whitespace boundaries
+        val standaloneWords = listOf(
+            "(?i)(?:^|\\s+)ko(?:\\s+|$)",
+            "(?i)(?:^|\\s+)se(?:\\s+|$)",
+            "(?i)(?:^|\\s+)call(?:\\s+|$)",
+            "(?i)(?:^|\\s+)dial(?:\\s+|$)",
+            "(?i)(?:^|\\s+)please(?:\\s+|$)",
+            "(?:^|\\s+)کو(?:\\s+|$)",
+            "(?:^|\\s+)سے(?:\\s+|$)",
+            "(?:^|\\s+)کال(?:\\s+|$)",
+            "(?:^|\\s+)فون(?:\\s+|$)"
+        )
+        for (wRegex in standaloneWords) {
+            contact = contact.replace(Regex(wRegex), " ")
+        }
+
         contact = contact.replace(Regex("\\s+"), " ").trim()
         return Pair(contact.ifBlank { "Contact" }, sim)
     }

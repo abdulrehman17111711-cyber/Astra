@@ -31,6 +31,7 @@ class TextToSpeechManager(context: Context) {
     private var pendingCompletionCallback: (() -> Unit)? = null
     private var currentSpeechRate: Float = 1.0f
     private var currentPitch: Float = 1.0f
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
@@ -63,20 +64,24 @@ class TextToSpeechManager(context: Context) {
                             AstraLogger.d("TextToSpeechManager", "Completed speech utterance: $utteranceId")
                             val cb = pendingCompletionCallback
                             pendingCompletionCallback = null
-                            cb?.invoke()
+                            mainHandler.post { cb?.invoke() }
                         }
 
                         @Deprecated("Deprecated in Java")
                         override fun onError(utteranceId: String?) {
                             _isSpeaking.value = false
+                            val cb = pendingCompletionCallback
                             pendingCompletionCallback = null
                             AstraLogger.w("TextToSpeechManager", "Error during utterance: $utteranceId")
+                            mainHandler.post { cb?.invoke() }
                         }
 
                         override fun onError(utteranceId: String?, errorCode: Int) {
                             _isSpeaking.value = false
+                            val cb = pendingCompletionCallback
                             pendingCompletionCallback = null
                             AstraLogger.w("TextToSpeechManager", "TTS error code $errorCode on utterance $utteranceId")
+                            mainHandler.post { cb?.invoke() }
                         }
                     })
 
@@ -98,7 +103,7 @@ class TextToSpeechManager(context: Context) {
         val engine = tts
         if (engine == null || !_isReady.value || text.isBlank()) {
             AstraLogger.d("TextToSpeechManager", "Engine not ready or text blank, invoking onDone immediately")
-            onDone?.invoke()
+            mainHandler.post { onDone?.invoke() }
             return
         }
 
@@ -110,7 +115,7 @@ class TextToSpeechManager(context: Context) {
             AstraLogger.w("TextToSpeechManager", "engine.speak returned code $result")
             _isSpeaking.value = false
             pendingCompletionCallback = null
-            onDone?.invoke()
+            mainHandler.post { onDone?.invoke() }
         }
     }
 
@@ -122,7 +127,7 @@ class TextToSpeechManager(context: Context) {
         _isSpeaking.value = false
         val cb = pendingCompletionCallback
         pendingCompletionCallback = null
-        cb?.invoke()
+        mainHandler.post { cb?.invoke() }
     }
 
     /**

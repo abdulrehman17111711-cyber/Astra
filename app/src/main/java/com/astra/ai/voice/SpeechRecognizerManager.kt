@@ -366,8 +366,8 @@ class SpeechRecognizerManager(
             _audioLevel.value = 0f
 
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-            val recognizedText = matches?.firstOrNull()?.trim().orEmpty()
-            val textToEmit = if (recognizedText.isNotBlank()) recognizedText else lastPartialTranscript.trim()
+            val correctedBest = VoicePhoneticCorrector.selectBestTranscript(matches, context.contentResolver)
+            val textToEmit = if (correctedBest.isNotBlank()) correctedBest else VoicePhoneticCorrector.applyPhoneticRules(lastPartialTranscript.trim())
             lastPartialTranscript = ""
 
             if (textToEmit.isNotBlank()) {

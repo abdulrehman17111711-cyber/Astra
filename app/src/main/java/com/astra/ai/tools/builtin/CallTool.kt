@@ -9,6 +9,8 @@ import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import androidx.core.content.ContextCompat
 import com.astra.ai.core.AstraLogger
+import com.astra.ai.telephony.AndroidTelephonyService
+import com.astra.ai.telephony.TelephonyService
 import com.astra.ai.tools.Tool
 import com.astra.ai.tools.ToolExecutionResult
 import com.astra.ai.tools.ToolParamType
@@ -25,7 +27,8 @@ import com.astra.ai.tools.ToolParameter
  * - Consequential action: requires confirmation before execution
  */
 class CallTool(
-    private val context: Context
+    private val context: Context,
+    private val telephonyService: TelephonyService = AndroidTelephonyService(context)
 ) : Tool {
 
     override val name: String = "call_tool"
@@ -65,67 +68,28 @@ class CallTool(
 
         val requestedSim = (params["simPreference"] ?: params["sim"])?.toString()?.trim()?.ifEmpty { "Default SIM" } ?: "Default SIM"
 
-        // 1. Resolve phone number: if target already looks like numbers, use directly; otherwise lookup via ContactMatcher
-        val resolvedNumber = resolvePhoneNumber(target)
-        if (resolvedNumber.isBlank()) {
-            return ToolExecutionResult.failure("Could not find a phone number for \"$target\". Please verify contact permissions or check the contact name.")
-        }
+        val callResult = telephonyService.initiateCall(target, requestedSim)
+        val elapsed = System.currentTimeMillis() - startTime
 
-        // 2. Check CALL_PHONE permission
-        val hasCallPermission = ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.CALL_PHONE
-        ) == PackageManager.PERMISSION_GRANTED
-
-        // 3. Telecom SIM slot account resolution
-        val simInfo = resolveSimAccount(requestedSim)
-
-        return try {
-            val action = if (hasCallPermission) Intent.ACTION_CALL else Intent.ACTION_DIAL
-            val callIntent = Intent(action).apply {
-                data = Uri.parse("tel:$resolvedNumber")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-
-                // Attach SIM preference to Intent extras using official Telecom extra keys & OEM compatibility keys
-                simInfo.accountHandle?.let { handle ->
-                    putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle)
-                    putExtra("android.telecom.extra.PHONE_ACCOUNT_HANDLE", handle)
-                }
-
-                val slot = simInfo.slotIndex ?: if (requestedSim.contains("2") || requestedSim.contains("ٹو") || requestedSim.contains("two", ignoreCase = true)) 1 else 0
-                putExtra("com.android.phone.extra.slot", slot)
-                putExtra("simSlot", slot)
-                putExtra("slot", slot)
-                putExtra("Subscription", slot)
-            }
-
-            context.startActivity(callIntent)
-            val elapsed = System.currentTimeMillis() - startTime
-
-            val actionDescription = if (hasCallPermission) "Calling" else "Opened dialer for"
-            val simDescription = if (simInfo.appliedSlot != null) " via ${simInfo.appliedSlot}" else ""
-            val note = if (!hasCallPermission) " (Dialer opened because CALL_PHONE permission is not granted)" else ""
-            val limitNote = if (simInfo.limitationReason != null) " (${simInfo.limitationReason})" else ""
-
+        return if (callResult.success) {
             ToolExecutionResult.success(
-                displayText = "$actionDescription $target ($resolvedNumber)$simDescription$note$limitNote.",
+                displayText = callResult.displayText,
                 output = mapOf(
                     "target" to target,
-                    "phoneNumber" to resolvedNumber,
-                    "simApplied" to (simInfo.appliedSlot ?: requestedSim),
-                    "directCall" to hasCallPermission,
+                    "phoneNumber" to (callResult.targetNumber ?: ""),
+                    "simApplied" to callResult.simApplied,
+                    "directCall" to callResult.isDirectCall,
                     "status" to "initiated",
                     "connected" to false
                 ),
                 executionTimeMs = elapsed
             )
-        } catch (e: Exception) {
-            AstraLogger.e("CallTool", "Execution error: ${e.message}")
-            ToolExecutionResult.failure("Failed to initiate call to $target: ${e.message}")
+        } else {
+            ToolExecutionResult.failure(callResult.displayText)
         }
     }
 
-    private fun resolvePhoneNumber(target: String): String {
+    fun resolvePhoneNumber(target: String): String {
         val digitsOnly = target.filter { it.isDigit() || it == '+' }
         if (digitsOnly.length >= 3 && target.all { it.isDigit() || it == '+' || it == '-' || it == ' ' }) {
             return digitsOnly
@@ -137,8 +101,14 @@ class CallTool(
             android.Manifest.permission.READ_CONTACTS
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (hasContactPermission) {
-            val contacts = ContactMatcher.findMatchingContacts(context.contentResolver, target)
+        val customContacts = try {
+            com.astra.ai.AstraApplication.instance.settingsRepository.settings.value.customContacts
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
+        if (hasContactPermission || customContacts.isNotEmpty()) {
+            val contacts = ContactMatcher.findMatchingContacts(context.contentResolver, target, customContacts)
             if (contacts.isNotEmpty()) {
                 return contacts.first().phoneNumber.filter { it.isDigit() || it == '+' }
             }

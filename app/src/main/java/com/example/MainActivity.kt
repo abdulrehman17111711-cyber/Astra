@@ -21,11 +21,27 @@ class MainActivity : ComponentActivity() {
         configureLockScreenDisplay()
         handleUnlockIntent(intent)
         handleAutoActivateIntent(intent)
+        startWakeWordServiceIfPermitted()
 
         setContent {
             AstraTheme {
                 AstraNavHost(app = AstraApplication.instance)
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startWakeWordServiceIfPermitted()
+    }
+
+    private fun startWakeWordServiceIfPermitted() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            com.astra.ai.voice.WakeWordBackgroundService.start(this)
         }
     }
 
@@ -43,7 +59,7 @@ class MainActivity : ComponentActivity() {
             if (!wakeQuery.isNullOrBlank()) {
                 app.assistantController.processQuery(wakeQuery)
             } else {
-                app.assistantController.textToSpeechManager.speak("جی بتائیں، کیا کام ہے؟") {
+                app.assistantController.textToSpeechManager.speak("Hello, how can I help you?") {
                     app.assistantController.activateVoiceSession()
                 }
             }
@@ -71,6 +87,25 @@ class MainActivity : ComponentActivity() {
                 keyguardManager?.requestDismissKeyguard(this, null)
             }
         }
+    }
+
+    private var lastVolumeDownTime = 0L
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+            val now = System.currentTimeMillis()
+            if (now - lastVolumeDownTime in 50..650) {
+                lastVolumeDownTime = 0L
+                val app = application as? AstraApplication ?: AstraApplication.instance
+                app.assistantController.textToSpeechManager.speak("Hello, how can I help you?") {
+                    app.assistantController.activateVoiceSession()
+                }
+                return true
+            } else {
+                lastVolumeDownTime = now
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
 

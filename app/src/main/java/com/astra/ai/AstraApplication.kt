@@ -64,6 +64,9 @@ class AstraApplication : Application() {
     lateinit var permissionManager: PermissionManager
         private set
 
+    lateinit var telephonyService: com.astra.ai.telephony.TelephonyService
+        private set
+
     lateinit var confirmationManager: com.astra.ai.security.ConfirmationManager
         private set
 
@@ -94,6 +97,7 @@ class AstraApplication : Application() {
         // 2. Settings & System Managers
         settingsRepository = DefaultSettingsRepository()
         permissionManager = PermissionManager(this)
+        telephonyService = com.astra.ai.telephony.AndroidTelephonyService(this)
         confirmationManager = com.astra.ai.security.ConfirmationManager()
         appManager = AndroidAppManager(this)
         networkMonitor = AndroidNetworkMonitor(this)
@@ -104,8 +108,8 @@ class AstraApplication : Application() {
         toolRegistry.register(com.astra.ai.tools.builtin.AppLaunchTool(this, appManager))
         toolRegistry.register(com.astra.ai.tools.builtin.OpenAppTool(this, appManager))
         toolRegistry.register(com.astra.ai.tools.builtin.ContactTool(this))
-        toolRegistry.register(com.astra.ai.tools.builtin.CallTool(this))
-        toolRegistry.register(com.astra.ai.tools.builtin.CallContactTool(this))
+        toolRegistry.register(com.astra.ai.tools.builtin.CallTool(this, telephonyService))
+        toolRegistry.register(com.astra.ai.tools.builtin.CallContactTool(this, telephonyService))
         toolRegistry.register(com.astra.ai.tools.builtin.SmsTool(this))
         toolRegistry.register(com.astra.ai.tools.builtin.SendMessageTool(this))
         toolRegistry.register(com.astra.ai.tools.builtin.AlarmTool(this))
